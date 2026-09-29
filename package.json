@@ -1,0 +1,24 @@
+{
+  "name": "bianwang-archive",
+  "version": "1.0.0",
+  "private": true,
+  "description": "辨妄阁 · 辟谣档案库 — Vue3 + Vite8 + Pinia4 + Vue Router 5 前端，JSON 文件存储后端，Nginx 托管",
+  "packageManager": "pnpm@11.1.3",
+  "scripts": {
+    "dev": "pnpm --parallel --filter server --filter web dev",
+    "dev:server": "pnpm --filter server dev",
+    "dev:web": "pnpm --filter web dev",
+    "licenses": "node scripts/gen-license-manifest.mjs",
+    "prebuild": "node scripts/gen-license-manifest.mjs",
+    "build": "pnpm --filter web build",
+    "smoke": "node scripts/api-smoke.mjs",
+    "preview": "pnpm --filter web preview",
+    "start": "pnpm --filter server start",
+    "seed": "node server/scripts/reseed.js",
+    "walkthrough": "node scripts/walkthrough.mjs",
+    "audit:ui": "node C:/Users/52956/.qoder-cn/skills/terra-faction-ui/scripts/audit-faction-ui.mjs web"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

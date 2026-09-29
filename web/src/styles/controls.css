@@ -1,0 +1,435 @@
+/* ============================================================
+   Yan / 炎国 控件语法：folded-record-block + seal-press-down
+   角拓扑：方角 + 右上折角；边界节奏：界栏单线 / 承诺双栏线
+   按压方向：向下落印；选中态：印朱记录边（不依赖色相亦可辨）
+   ============================================================ */
+
+.paper-btn {
+  --btn-bg: var(--paper-leaf);
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-min-h);
+  padding: var(--space-2) var(--space-4);
+  background: var(--btn-bg);
+  color: var(--terra-ink);
+  border: var(--control-stroke) solid var(--rule-firm);
+  border-radius: var(--control-radius);
+  font-family: var(--font-display);
+  font-size: var(--text-small);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: border-color var(--dur-select) var(--ease-archive),
+    background-color var(--dur-select) var(--ease-archive),
+    translate var(--dur-select) var(--ease-archive);
+}
+
+/* 折角：右上角内折，命中区域不被裁掉（伪元素 pointer-events:none） */
+.paper-btn::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  width: 10px;
+  height: 10px;
+  background: linear-gradient(225deg, var(--terra-field) 0 50%, var(--paper-shadow) 50%);
+  clip-path: polygon(100% 0, 0 0, 100% 100%);
+  pointer-events: none;
+}
+
+.paper-btn:hover {
+  border-color: var(--terra-ink);
+  background: var(--paper-deep);
+}
+
+/* 落印：向下位移，短促可逆 */
+.paper-btn:active {
+  translate: 0 var(--press-distance);
+}
+
+.paper-btn[disabled],
+.paper-btn[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  translate: 0 0;
+}
+
+.paper-btn:focus-visible {
+  outline: var(--focus-ring) solid var(--terra-ink);
+  outline-offset: 2px;
+}
+
+/* 承诺按钮：印朱实心 + 双栏边界，全页最强轮廓，仅用于用印/提交 */
+.seal-press {
+  --btn-bg: var(--terra-signal);
+  color: var(--terra-signal-text);
+  border-color: var(--terra-signal-ink);
+  box-shadow: inset 0 0 0 1px var(--terra-signal-text), 0 0 0 3px var(--terra-signal-text),
+    0 0 0 4px var(--terra-signal-ink);
+  font-weight: 700;
+  padding-inline: var(--space-5);
+}
+.seal-press::after {
+  background: linear-gradient(225deg, var(--terra-signal-ink) 0 50%, #6f1f19 50%);
+}
+.seal-press:hover {
+  --btn-bg: var(--terra-signal-ink);
+  border-color: var(--terra-ink);
+}
+.seal-press:focus-visible {
+  outline-color: var(--terra-ink);
+}
+
+/* 危险动作：保留语义临界色，沿用同一折角拓扑 */
+.btn-critical {
+  --btn-bg: transparent;
+  color: var(--terra-critical);
+  border-color: var(--terra-critical);
+}
+.btn-critical:hover {
+  background: var(--terra-critical);
+  color: var(--terra-signal-text);
+  border-color: var(--terra-critical);
+}
+
+.btn-quiet {
+  --btn-bg: transparent;
+  border-color: var(--rule-quiet);
+  min-height: 34px;
+  padding: var(--space-1) var(--space-3);
+}
+
+/* —— 输入：卷面单线，聚焦时升为界栏双线 —— */
+.field {
+  display: block;
+  margin-block-end: var(--space-4);
+}
+.field > span,
+.field-label {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--text-small);
+  letter-spacing: 0.1em;
+  color: var(--ink-mute);
+  margin-block-end: var(--space-1);
+}
+
+.paper-input,
+.paper-textarea,
+.paper-select {
+  width: 100%;
+  min-height: var(--control-min-h);
+  padding: var(--space-2) var(--space-3);
+  background: var(--paper-leaf);
+  border: 0;
+  border-block-end: var(--grid-rule) solid var(--rule-firm);
+  border-radius: var(--control-radius-quiet);
+  color: var(--terra-ink);
+  transition: border-color var(--dur-select) var(--ease-archive),
+    box-shadow var(--dur-select) var(--ease-archive);
+}
+
+.paper-textarea {
+  min-height: 6.5rem;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.paper-input:hover,
+.paper-textarea:hover,
+.paper-select:hover {
+  background: var(--paper-deep);
+}
+
+.paper-input:focus-visible,
+.paper-textarea:focus-visible,
+.paper-select:focus-visible {
+  outline: none;
+  border-block-end-width: 3px;
+  border-block-end-color: var(--terra-ink);
+  box-shadow: 0 1px 0 0 var(--rule-quiet);
+}
+
+.paper-input[aria-invalid='true'],
+.paper-textarea[aria-invalid='true'] {
+  border-block-end-color: var(--terra-critical);
+  box-shadow: 0 2px 0 -1px var(--terra-critical);
+}
+
+.field-error {
+  display: block;
+  margin-block-start: var(--space-1);
+  color: var(--terra-critical);
+  font-size: var(--text-small);
+}
+.field-hint {
+  display: block;
+  color: var(--ink-mute);
+  font-size: var(--text-small);
+}
+
+/* select 保留原生弹出，仅换卷面外观 */
+.paper-select {
+  appearance: none;
+  padding-inline-end: var(--space-6);
+  background-image: linear-gradient(45deg, transparent 50%, var(--rule-firm) 50%),
+    linear-gradient(135deg, var(--rule-firm) 50%, transparent 50%);
+  background-position: calc(100% - 16px) 55%, calc(100% - 11px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+/* —— 复选：方角矿物勾，选中加印朱记录边 —— */
+.paper-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-min-h);
+  cursor: pointer;
+  font-size: var(--text-small);
+}
+.paper-check input[type='checkbox'],
+.paper-check input[type='radio'] {
+  appearance: none;
+  position: relative;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  background: var(--paper-leaf);
+  border: var(--control-stroke) solid var(--rule-firm);
+  border-radius: var(--control-radius);
+  cursor: pointer;
+  transition: border-color var(--dur-select) var(--ease-archive),
+    translate var(--dur-select) var(--ease-archive);
+}
+.paper-check input[type='radio'] {
+  border-radius: 50%;
+}
+.paper-check input[type='checkbox']:checked {
+  border-color: var(--terra-ink);
+  translate: 0 1px;
+}
+.paper-check input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-start: 4px;
+  width: 8px;
+  height: 12px;
+  border: solid var(--terra-signal);
+  border-width: 0 3px 3px 0;
+  transform: rotate(40deg);
+}
+.paper-check input[type='radio']:checked {
+  border-color: var(--terra-ink);
+}
+.paper-check input[type='radio']:checked::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  background: var(--terra-signal);
+  border-radius: 50%;
+}
+.paper-check input:focus-visible {
+  outline: var(--focus-ring) solid var(--terra-ink);
+  outline-offset: 2px;
+}
+.paper-check input[disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* —— 开关：批注栏式横向闩，非圆滑药丸 —— */
+.paper-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-min-h);
+  padding: 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--text-small);
+  color: var(--ink-soft);
+}
+.paper-switch .switch-track {
+  position: relative;
+  width: 46px;
+  height: 22px;
+  flex: none;
+  background: var(--paper-deep);
+  border: var(--control-stroke) solid var(--rule-firm);
+  border-radius: var(--control-radius);
+}
+.paper-switch .switch-knob {
+  position: absolute;
+  inset-block: 1px;
+  inset-inline-start: 1px;
+  width: 16px;
+  background: var(--rule-firm);
+  border-radius: var(--control-radius);
+  transition: translate var(--dur-select) var(--ease-archive),
+    background-color var(--dur-select) var(--ease-archive);
+}
+.paper-switch[aria-checked='true'] .switch-knob {
+  translate: 22px 0;
+  background: var(--terra-signal);
+}
+.paper-switch[aria-checked='true'] .switch-track {
+  border-color: var(--terra-ink);
+}
+.paper-switch:focus-visible {
+  outline: var(--focus-ring) solid var(--terra-ink);
+  outline-offset: 3px;
+}
+
+/* —— 连续量：界尺滑轨，方形游标 —— */
+.paper-range {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--text-small);
+}
+.paper-range input[type='range'] {
+  appearance: none;
+  width: 100%;
+  height: var(--control-min-h);
+  margin: 0;
+  background: transparent;
+  cursor: ew-resize;
+}
+.paper-range input[type='range']::-webkit-slider-runnable-track {
+  height: 6px;
+  background: repeating-linear-gradient(
+    to right,
+    var(--rule-quiet) 0 1px,
+    transparent 1px 12px
+  );
+  border-block-end: var(--grid-rule) solid var(--rule-firm);
+}
+.paper-range input[type='range']::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 22px;
+  margin-block-start: -8px;
+  background: var(--paper-leaf);
+  border: var(--control-stroke) solid var(--terra-ink);
+  border-radius: var(--control-radius);
+}
+.paper-range input[type='range']::-moz-range-track {
+  height: 6px;
+  border-block-end: var(--grid-rule) solid var(--rule-firm);
+}
+.paper-range input[type='range']::-moz-range-thumb {
+  width: 12px;
+  height: 20px;
+  background: var(--paper-leaf);
+  border: var(--control-stroke) solid var(--terra-ink);
+  border-radius: var(--control-radius);
+}
+.paper-range input[type='range']:focus-visible {
+  outline: var(--focus-ring) solid var(--terra-ink);
+  outline-offset: 2px;
+}
+.paper-range output {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-mute);
+}
+
+/* —— 进度：卷面填墨，接真实表单完成度 —— */
+.paper-progress {
+  display: grid;
+  gap: var(--space-1);
+}
+.paper-progress progress {
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border: var(--grid-rule) solid var(--rule-firm);
+  border-radius: var(--control-radius);
+  background: var(--paper-deep);
+}
+.paper-progress progress::-webkit-progress-bar {
+  background: transparent;
+}
+.paper-progress progress::-webkit-progress-value {
+  background: var(--terra-signal);
+}
+.paper-progress progress::-moz-progress-bar {
+  background: var(--terra-signal);
+}
+
+/* —— 对话框：折叠文书块 + 模态语义 —— */
+.paper-dialog {
+  padding: 0;
+  border: var(--frame-rule) solid var(--terra-ink);
+  border-radius: var(--control-radius);
+  background: var(--paper-leaf);
+  color: var(--terra-ink);
+  max-inline-size: min(34rem, calc(100vw - 2rem));
+}
+.paper-dialog::backdrop {
+  background: rgba(23, 24, 23, 0.55);
+}
+.paper-dialog header,
+.paper-dialog footer {
+  padding: var(--space-4) var(--space-5);
+  border-block: var(--grid-rule) solid var(--rule-quiet);
+}
+.paper-dialog header {
+  border-block-start: 0;
+}
+.paper-dialog footer {
+  border-block-end: 0;
+  display: flex;
+  gap: var(--space-3);
+  justify-content: flex-end;
+  background: var(--paper-deep);
+}
+.paper-dialog .dialog-body {
+  padding: var(--space-5);
+}
+
+/* —— 瞬时反馈：卷边回执条 —— */
+.toast-stack {
+  position: fixed;
+  inset-block-end: var(--space-5);
+  inset-inline-end: var(--space-5);
+  z-index: 80;
+  display: grid;
+  gap: var(--space-2);
+  max-inline-size: min(24rem, calc(100vw - 2rem));
+}
+.toast {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--paper-leaf);
+  border: var(--control-stroke) solid var(--terra-ink);
+  border-inline-start-width: 6px;
+  border-radius: var(--control-radius);
+  box-shadow: -3px 3px 0 var(--paper-shadow);
+  font-size: var(--text-small);
+}
+.toast[data-kind='commit'] {
+  border-inline-start-color: var(--terra-signal);
+}
+.toast[data-kind='error'] {
+  border-inline-start-color: var(--terra-critical);
+}
+.toast button {
+  margin-inline-start: auto;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--ink-mute);
+  font-size: var(--text-micro);
+  letter-spacing: 0.1em;
+}
+.toast button:focus-visible {
+  outline: var(--focus-ring) solid var(--terra-ink);
+  outline-offset: 2px;
+}

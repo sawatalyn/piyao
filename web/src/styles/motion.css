@@ -1,0 +1,137 @@
+/* ============================================================
+   Yan 动法语法：三层归属（入场 / 文书仪轨 / 承诺落印）
+   入场 = 纸面遮罩自上而下揭开；仪轨 = 界栏逐节点描出；
+   承诺 = 印朱块一次落定，绝不在每次点击时出现
+   ============================================================ */
+
+@keyframes paper-mask-reveal {
+  from {
+    clip-path: inset(0 0 100% 0);
+    opacity: 0.35;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+@keyframes rule-travel {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes seal-land {
+  0% {
+    opacity: 0;
+    translate: 0 -10px;
+    scale: 1.06;
+  }
+  60% {
+    opacity: 1;
+    translate: 0 2px;
+    scale: 0.99;
+  }
+  100% {
+    opacity: 1;
+    translate: 0 0;
+    scale: 1;
+  }
+}
+
+@keyframes slip-advance {
+  from {
+    translate: -6px 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+
+/* 仪轨回路：仅由"待复核"这一真实状态驱动，非装饰 */
+@keyframes review-edge-breath {
+  0%,
+  100% {
+    border-inline-start-color: var(--rule-firm);
+  }
+  50% {
+    border-inline-start-color: var(--terra-signal);
+  }
+}
+
+.reveal {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .reveal[data-revealed='true'] {
+    animation: paper-mask-reveal var(--dur-reveal) var(--ease-archive) both;
+  }
+
+  .shell-head {
+    animation: paper-mask-reveal 480ms var(--ease-archive) both;
+  }
+
+  .sheet-title-rule {
+    transform-origin: left center;
+    animation: rule-travel var(--dur-draw) var(--ease-archive) 200ms both;
+  }
+
+  .seal-mark[data-just-committed='true'] {
+    animation: seal-land var(--dur-commit) var(--ease-archive) both;
+  }
+
+  .record-slip[aria-current='true'] .slip-body {
+    animation: slip-advance var(--dur-commit) var(--ease-archive) both;
+  }
+
+  .post-card[data-review-overdue='true'] {
+    animation: review-edge-breath var(--dur-loop) ease-in-out infinite;
+  }
+
+  .card-in-flight {
+    transition: translate var(--dur-select) var(--ease-archive),
+      box-shadow var(--dur-select) var(--ease-archive);
+  }
+
+  .route-veil {
+    animation: paper-mask-reveal 520ms var(--ease-archive) both;
+  }
+}
+
+/* 降低动效：立即呈现终态，停掉全部回路，保留选中与焦点表达 */
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal[data-revealed='true'],
+  .route-veil,
+  .shell-head,
+  .seal-mark {
+    opacity: 1;
+    animation: none;
+    clip-path: none;
+  }
+
+  .sheet-title-rule {
+    transform: none;
+    animation: none;
+  }
+
+  .post-card[data-review-overdue='true'] {
+    animation: none;
+    border-inline-start-color: var(--terra-signal);
+  }
+
+  .record-slip[aria-current='true'] .slip-body {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

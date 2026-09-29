@@ -1,0 +1,131 @@
+/* ============================================================
+   辨妄阁 · Yan / 炎国 archival tokens
+   tone lane: neutral-light-ink-paper (light · neutral paper)
+   signal: seal red — 仅用于承诺/核验态；muted gold 仅用于品级与礼制强调
+   数值取自技能包 assets/tokens（原始实现种子，非官方色板声明）
+   ============================================================ */
+
+:root {
+  /* —— 主导中性面：纸、墨、矿物灰 —— */
+  --terra-field: #f6f2e8;
+  --terra-ink: #171817;
+  --terra-surface: #ddd7ca;
+  --terra-rule: #777a73;
+
+  /* —— 信号：印朱（承诺） —— */
+  --terra-signal: #b23b2f;
+  --terra-signal-ink: #84261f;
+  --terra-signal-text: #fff9f0;
+  --terra-critical: #8c2825;
+
+  /* —— 派生纸面层级（同一色相内加深/提亮，不引入新色相） —— */
+  --paper-deep: #efe9dc;
+  --paper-leaf: #fbf8f1;
+  --paper-shadow: #d3ccbc;
+  --ink-soft: #3d3e3a;
+  --ink-mute: #6b6c66;
+  --rule-quiet: #c3bcac;
+  --rule-firm: #8e8878;
+
+  /* —— 矿物颜料：批注专用（朱砂/藤黄/花青/墨），仅用于标注笔迹 —— */
+  --anno-seal: #b23b2f;
+  --anno-gold: #9a7a2e;
+  --anno-indigo: #2f4b63;
+  --anno-ink: #171817;
+
+  /* —— 品级/礼制：muted gold，仅 rank 与 ceremony —— */
+  --rank-gold: #9a7a2e;
+
+  /* —— 版框与界栏（Yan 结构语法） —— */
+  --frame-rule: 2px;
+  --grid-rule: 1px;
+  --fold-size: 14px;
+  --seal-size: 26px;
+
+  /* —— 控件拓扑：folded-record-block，方角为主 —— */
+  --control-radius: 1px;
+  --control-radius-quiet: 0;
+  --control-stroke: 2px;
+  --control-min-h: 40px;
+  --press-distance: 2px;
+  --focus-ring: 2px;
+
+  /* —— 字体：可读中文衬线作卷面，无衬线作界面；不加载外部字体 —— */
+  --font-display: 'Songti SC', 'STSong', 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif;
+  --font-body: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', 'Source Han Sans SC', system-ui, sans-serif;
+  --font-mono: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+
+  --text-micro: 0.6875rem;
+  --text-small: 0.8125rem;
+  --text-body: 1rem;
+  --text-lead: 1.125rem;
+  --text-title: 1.5rem;
+  --text-head: 2rem;
+  --text-monument: clamp(2.25rem, 5vw, 3.5rem);
+
+  /* —— 节奏 —— */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 72px;
+
+  --margin-width: 20rem;
+  --sheet-max: 78rem;
+
+  /* —— 动效：archive 用克制的 ease-in-out —— */
+  --ease-archive: cubic-bezier(0.32, 0.08, 0.24, 1);
+  --dur-select: 180ms;
+  --dur-commit: 420ms;
+  --dur-reveal: 620ms;
+  --dur-draw: 980ms;
+  --dur-loop: 2.1s;
+}
+
+/* —— 深度轴与阵营轴分离：改深度不得改文案与任务语义 —— */
+html[data-terra-depth='minimal'] {
+  --layers: 1;
+  --shell-ornament: 0;
+  --motion-families: 1;
+}
+html[data-terra-depth='moderate'] {
+  --layers: 2;
+  --shell-ornament: 1;
+  --motion-families: 2;
+}
+html[data-terra-depth='complex'] {
+  --layers: 3;
+  --shell-ornament: 1;
+  --motion-families: 3;
+}
+html[data-terra-depth='maximal'] {
+  --layers: 4;
+  --shell-ornament: 2;
+  --motion-families: 4;
+}
+
+/* —— 暗色纸（夜读）：保持同一色相与同一信号组，仅降明度 —— */
+html[data-tone='night'] {
+  --terra-field: #1c1b18;
+  --terra-ink: #ece5d6;
+  --terra-surface: #2a2823;
+  --terra-rule: #8b8578;
+  --terra-signal: #d0574a;
+  --terra-signal-ink: #e0705f;
+  --terra-critical: #e0705f;
+  --paper-deep: #23211d;
+  --paper-leaf: #221f1b;
+  --paper-shadow: #0f0e0c;
+  --ink-soft: #d6cfc0;
+  --ink-mute: #a49d8e;
+  --rule-quiet: #3d3a33;
+  --rule-firm: #5b564c;
+  --anno-seal: #d0574a;
+  --anno-gold: #c2a05a;
+  --anno-indigo: #7fa3bd;
+  --anno-ink: #ece5d6;
+  color-scheme: dark;
+}

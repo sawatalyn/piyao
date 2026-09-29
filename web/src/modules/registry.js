@@ -1,0 +1,128 @@
+/**
+ * 功能模块注册表：菜单、路由守卫、批注栏入口全部由此派生。
+ * 新增功能 = 在此登记一条，其余（菜单编辑、权限、页脚登记）自动生效。
+ */
+export const MODULES = [
+  {
+    id: 'home',
+    name: 'home',
+    title: '卷首',
+    subtitle: 'Portal',
+    route: '/',
+    requiresAuth: false,
+    inIndex: true,
+    inMargin: false,
+    summary: '档案瀑布流与快速检索入口',
+  },
+  {
+    id: 'search',
+    name: 'search',
+    title: '检索',
+    subtitle: 'Search',
+    route: '/search',
+    requiresAuth: false,
+    inIndex: true,
+    inMargin: false,
+    summary: '按标题、话题与正文做模糊与向量式检索',
+  },
+  {
+    id: 'tags',
+    name: 'tags',
+    title: '话题索引',
+    subtitle: 'Topics',
+    route: '/tags',
+    requiresAuth: false,
+    inIndex: true,
+    inMargin: true,
+    summary: '全部话题标签及其档案数量',
+  },
+  {
+    id: 'resources',
+    name: 'resources',
+    title: '资源库',
+    subtitle: 'Sources',
+    route: '/resources',
+    requiresAuth: false,
+    inIndex: true,
+    inMargin: false,
+    summary: '无职转生专题辟谣常用的查证载体与出处清单',
+  },
+  {
+    id: 'library',
+    name: 'library',
+    title: '洛琪希图书馆镜像',
+    subtitle: 'Library',
+    route: '/library',
+    requiresAuth: false,
+    inIndex: true,
+    inMargin: false,
+    summary: '访谈翻译合集的本地 EPUB/PDF 备份，输入口令后即可取书',
+  },
+  {
+    id: 'submit',
+    name: 'edit',
+    title: '新增图文',
+    subtitle: 'Draft',
+    route: '/edit',
+    requiresAuth: true,
+    inIndex: true,
+    inMargin: true,
+    summary: '编写谣言案例、辟谣内容与材料源',
+  },
+  {
+    id: 'reorder',
+    name: 'reorder',
+    title: '卷次重排',
+    subtitle: 'Reorder',
+    route: '/reorder',
+    requiresAuth: true,
+    inIndex: true,
+    inMargin: true,
+    summary: '拖动调整档案在首页的显示顺序',
+  },
+  {
+    id: 'menu-editor',
+    name: 'menu-editor',
+    title: '菜单编辑',
+    subtitle: 'Menu',
+    route: '/menu-editor',
+    requiresAuth: true,
+    inIndex: true,
+    inMargin: true,
+    summary: '选择哪些功能暴露为菜单',
+  },
+  {
+    id: 'users',
+    name: 'users',
+    title: '用户名册',
+    subtitle: 'Users',
+    route: '/users',
+    requiresAuth: true,
+    inIndex: false,
+    inMargin: true,
+    summary: '可登录用户登记（CSV 明文存储）',
+  },
+  {
+    id: 'about',
+    name: 'about',
+    title: '凡例',
+    subtitle: 'About',
+    route: '/about',
+    requiresAuth: false,
+    inIndex: true,
+    inMargin: false,
+    summary: '体例、复核规则与安全说明',
+  },
+];
+
+export const moduleById = (id) => MODULES.find((m) => m.id === id) || null;
+
+export const MODULE_IDS = MODULES.map((m) => m.id);
+
+/** 默认菜单形态（服务端 menu.json 为空时回落到此） */
+export const DEFAULT_MENU = MODULES.map((m, order) => ({
+  moduleId: m.id,
+  visible: true,
+  label: '',
+  order,
+}));

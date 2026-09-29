@@ -1,0 +1,226 @@
+{
+  "generatedAt": "2026-09-29T10:13:58.754Z",
+  "packages": [
+    {
+      "name": "@vitejs/plugin-vue",
+      "declared": "^6.0.9",
+      "installed": "6.0.9",
+      "license": "MIT",
+      "workspace": "web",
+      "kind": "构建期",
+      "purpose": "SFC 编译",
+      "home": "https://github.com/vitejs/vite-plugin-vue/tree/main/packages/plugin-vue"
+    },
+    {
+      "name": "ckeditor5",
+      "declared": "48.5.2",
+      "installed": "48.5.2",
+      "license": "GPL-2.0-or-later",
+      "workspace": "web",
+      "kind": "运行时",
+      "purpose": "富文本编辑基底（免费版）",
+      "home": "https://ckeditor.com/ckeditor-5"
+    },
+    {
+      "name": "cookie-parser",
+      "declared": "^1.4.7",
+      "installed": "1.4.7",
+      "license": "MIT",
+      "workspace": "server",
+      "kind": "运行时",
+      "purpose": "会话 Cookie 解析",
+      "home": "https://github.com/expressjs/cookie-parser"
+    },
+    {
+      "name": "dompurify",
+      "declared": "^3.4.16",
+      "installed": "3.4.16",
+      "license": "(MPL-2.0 OR Apache-2.0)",
+      "workspace": "web",
+      "kind": "运行时",
+      "purpose": "富文本二次净化",
+      "home": "https://github.com/cure53/DOMPurify"
+    },
+    {
+      "name": "express",
+      "declared": "^5.2.1",
+      "installed": "5.2.1",
+      "license": "MIT",
+      "workspace": "server",
+      "kind": "运行时",
+      "purpose": "HTTP 服务与路由",
+      "home": "https://expressjs.com/"
+    },
+    {
+      "name": "express-rate-limit",
+      "declared": "^8.7.0",
+      "installed": "8.7.0",
+      "license": "MIT",
+      "workspace": "server",
+      "kind": "运行时",
+      "purpose": "接口限流",
+      "home": "https://github.com/express-rate-limit/express-rate-limit"
+    },
+    {
+      "name": "minisearch",
+      "declared": "^7.2.0",
+      "installed": "7.2.0",
+      "license": "MIT",
+      "workspace": "server",
+      "kind": "运行时",
+      "purpose": "常驻内存检索索引（BM25+）",
+      "home": "https://lucaong.github.io/minisearch/"
+    },
+    {
+      "name": "multer",
+      "declared": "^2.4.0",
+      "installed": "2.4.0",
+      "license": "MIT",
+      "workspace": "server",
+      "kind": "运行时",
+      "purpose": "上传接收（内存模式 + 体积上限）",
+      "home": "https://github.com/expressjs/multer"
+    },
+    {
+      "name": "pinia",
+      "declared": "^4.0.3",
+      "installed": "4.0.3",
+      "license": "MIT",
+      "workspace": "web",
+      "kind": "运行时",
+      "purpose": "状态管理",
+      "home": "https://pinia.vuejs.org"
+    },
+    {
+      "name": "sanitize-html",
+      "declared": "^2.17.7",
+      "installed": "2.17.7",
+      "license": "MIT",
+      "workspace": "server",
+      "kind": "运行时",
+      "purpose": "富文本白名单净化",
+      "home": "https://github.com/apostrophecms/apostrophe/tree/main/packages/sanitize-html"
+    },
+    {
+      "name": "sortablejs",
+      "declared": "^1.15.7",
+      "installed": "1.15.7",
+      "license": "MIT",
+      "workspace": "web",
+      "kind": "运行时",
+      "purpose": "重排序与菜单拖动",
+      "home": "https://github.com/SortableJS/Sortable"
+    },
+    {
+      "name": "vite",
+      "declared": "^8.3.1",
+      "installed": "8.3.1",
+      "license": "MIT",
+      "workspace": "web",
+      "kind": "构建期",
+      "purpose": "构建与开发服务（底层 Rolldown）",
+      "home": "https://vite.dev"
+    },
+    {
+      "name": "vue",
+      "declared": "^3.5.43",
+      "installed": "3.5.43",
+      "license": "MIT",
+      "workspace": "web",
+      "kind": "运行时",
+      "purpose": "前端视图层",
+      "home": "https://vuejs.org/"
+    },
+    {
+      "name": "vue-router",
+      "declared": "^5.3.1",
+      "installed": "5.3.1",
+      "license": "MIT",
+      "workspace": "web",
+      "kind": "运行时",
+      "purpose": "路由与导航守卫",
+      "home": "https://router.vuejs.org"
+    }
+  ],
+  "runtimes": [
+    {
+      "name": "Node.js",
+      "installed": "24.14.1",
+      "license": "MIT",
+      "role": "后端运行时",
+      "home": "https://nodejs.org/"
+    },
+    {
+      "name": "Nginx",
+      "installed": "1.24+（部署机版本）",
+      "license": "BSD-2-Clause",
+      "role": "静态托管、TLS 终止、限流与签名直链",
+      "home": "https://nginx.org/"
+    },
+    {
+      "name": "pnpm",
+      "installed": "工作区包管理器",
+      "license": "MIT",
+      "role": "monorepo 依赖管理",
+      "home": "https://pnpm.io/"
+    }
+  ],
+  "referenced": [
+    {
+      "name": "ckeditor/ckeditor5",
+      "license": "GPL-2.0-or-later（另有商业许可可选）",
+      "used": "作为依赖引入（富文本基底）",
+      "note": "取免费版构建，配置 licenseKey: \"GPL\"；画圈/划线/解除标注/插入图片四枚按钮以本站自定义插件补齐。GPL 义务随\"分发\"触发：本站为自托管、不对外分发构建物，义务限于随源保留 COPYING.GPL 与本登记表；若日后公开源码或交付安装包，整份前端源码须以同许可释出",
+      "home": "https://github.com/ckeditor/ckeditor5"
+    },
+    {
+      "name": "fuxingloh/vue-masonry-wall",
+      "license": "MIT",
+      "used": "未采用代码",
+      "note": "瀑布流分列算法对照；因其为 Vue 2 且最短列调度会破坏置顶与自定义顺序，改为自实现保序轮询分列",
+      "home": "https://github.com/fuxingloh/vue-masonry-wall"
+    },
+    {
+      "name": "ApoorvSaxena/lozad.js",
+      "license": "MIT",
+      "used": "未采用代码",
+      "note": "懒加载细节参照（命中即 unobserve、loaded 标记幂等、占位预载、卸载时 disconnect），由自研 composable 实现",
+      "home": "https://github.com/ApoorvSaxena/lozad.js"
+    },
+    {
+      "name": "lucaong/minisearch",
+      "license": "MIT",
+      "used": "作为依赖引入",
+      "note": "后端常驻内存检索索引（BM25+ 打分、字段加权、前缀与模糊），注入自研中文 bigram 分词",
+      "home": "https://github.com/lucaong/minisearch"
+    },
+    {
+      "name": "AFP-Medialab/verification-plugin",
+      "license": "MIT",
+      "used": "仅字段与体例参照",
+      "note": "核查类站点的\"声明—证据—结论\"信息层级与措辞参照，未复制其代码与素材",
+      "home": "https://github.com/AFP-Medialab/verification-plugin"
+    },
+    {
+      "name": "typemill/typemill",
+      "license": "MIT",
+      "used": "仅防护思路参照",
+      "note": "flat-file CMS 的防暴力破解、CSRF、数据目录保护等实现思路参照，未复制其 PHP 代码",
+      "home": "https://github.com/typemill/typemill"
+    },
+    {
+      "name": "中文维基百科首页版式",
+      "license": "排版参照（其文本为 CC BY-SA 4.0，标识为 Wikimedia 注册商标）",
+      "used": "仅四段式排版结构参照",
+      "note": "只参照 header/sidebar/main/footer 与 logo 位置等信息架构，未复制其任何文本、图片、样式或商标",
+      "home": "https://zh.wikipedia.org/"
+    },
+    {
+      "name": "terra-faction-ui（界面语法技能包）",
+      "license": "见技能包自带 ISC 声明",
+      "used": "设计语法来源",
+      "note": "采用其 Yan / 炎国 archival 证据化界面语法；本站为证据驱动的 Terra 阵营界面（明日方舟灵感），非官方界面",
+      "home": ""
+    }
+  ]
+}

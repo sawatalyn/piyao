@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+web/.vite/
+# 运行期数据整体不入库：口令是明文 CSV、会话与审计日志含敏感状态，
+# 演示内容一律由 `pnpm seed` 重建（详见 README「一、快速开始」的逐文件行为说明）
+server/data/
+# 会话内的一次性取证、走查与备份产物（备份里含 users.csv，绝不入库）
+.scratch-*/
+outputs/
+.qoder-credits/
+.env
+.env.local
