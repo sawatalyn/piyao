@@ -9,12 +9,17 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "cookie-parser": "^1.4.7",
-    "express": "^5.2.1",
-    "express-rate-limit": "^8.7.0",
-    "minisearch": "^7.2.0",
-    "multer": "^2.4.0",
-    "sanitize-html": "^2.17.7"
+    "@rgrove/parse-xml": "5.0.0",
+    "cookie-parser": "1.4.7",
+    "csv-parse": "7.0.3",
+    "csv-stringify": "6.9.0",
+    "diff": "9.0.0",
+    "express": "5.2.1",
+    "express-rate-limit": "8.7.0",
+    "minisearch": "7.2.0",
+    "multer": "2.4.0",
+    "pdfjs-dist": "6.3.289",
+    "sanitize-html": "2.17.7"
   },
   "engines": {
     "node": ">=20.19.0"

@@ -22,6 +22,10 @@ const book = computed(() => meta.value?.book || {});
 const chapters = computed(() => meta.value?.chapters || []);
 const total = computed(() => chapters.value.length || 1);
 const splitMb = computed(() => Math.round((meta.value?.limits?.splitBytes || 0) / 1024 / 1024) || 10);
+/** PDF 的「节」来自书签或固定页数，与 EPUB 的 spine 章节不是一回事，措辞按类型走 */
+const isPdf = computed(() => meta.value?.kind === 'pdf');
+const unit = computed(() => (isPdf.value ? '节' : '章'));
+const splitBy = computed(() => (meta.value?.meta?.splitBy === 'pages' ? '固定页数切分（此书无书签）' : '书签分节'));
 
 const human = (bytes) =>
   bytes > 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -34,7 +38,10 @@ const percent = computed(() => {
 const position = computed(() => {
   if (page.value?.mode === 'whole') return '全本一册';
   const partText = page.value?.parts > 1 ? ` · 小节 ${page.value.part}/${page.value.parts}` : '';
-  return `第 ${(page.value?.chapterIndex ?? 0) + 1} / ${total.value} 章${partText}`;
+  const pageText = Array.isArray(page.value?.pages) && page.value.pages.length
+    ? ` · 第 ${page.value.pages[0]}—${page.value.pages[page.value.pages.length - 1]} 页`
+    : '';
+  return `第 ${(page.value?.chapterIndex ?? 0) + 1} / ${total.value} ${unit.value}${partText}${pageText}`;
 });
 
 async function load() {
@@ -131,11 +138,13 @@ watch(meta, (value) => {
       <p class="sheet-lead">
         镜像册的<b>卷面阅览</b>：与取书同一道口令，正文按<b>章节分页</b>逐页下发，
         整本从不进浏览器内存；{{ splitMb }}MB 以上的书只此一种读法。
+        <template v-if="isPdf">PDF 依书签分节，无书签时按固定页数切；本站不做服务端光栅化，无文字层的页会如实标注。</template>
       </p>
       <p v-if="meta" class="micro-label">
-        {{ human(meta.book.bytes) }} · {{ meta.chapters.length }} 章 · 单页上限
+        {{ human(meta.book.bytes) }} · {{ meta.chapters.length }} {{ unit }} · 单页上限
         <span class="tabular">{{ Math.round(meta.limits.pageBytes / 1024) }}</span> KB · 令牌至
         <span class="tabular">{{ library.grant ? new Date(library.grant.expiresAt).toLocaleTimeString('zh-CN', { hour12: false }) : '—' }}</span>
+        <template v-if="isPdf">· {{ splitBy }}</template>
       </p>
     </header>
 
@@ -161,8 +170,8 @@ watch(meta, (value) => {
     <div v-if="library.unlocked && meta" class="reader-grid">
       <nav class="toc" aria-label="章节目录">
         <div class="pane-head">
-          <h2 class="pane-title">章节目录</h2>
-          <span class="micro-label">{{ meta.chapters.length }} 章</span>
+          <h2 class="pane-title">目录</h2>
+          <span class="micro-label">{{ meta.chapters.length }} {{ unit }}</span>
         </div>
         <ul>
           <li v-for="item in meta.chapters" :key="item.index">
@@ -179,7 +188,7 @@ watch(meta, (value) => {
               :class="{ 'is-now': item.index === page?.chapterIndex }"
               :aria-current="item.index === page?.chapterIndex ? 'page' : undefined"
               @click="go(item.index, 1)"
-            >{{ item.title }}</button>
+            >{{ item.title }}<span v-if="item.pages" class="toc-pages tabular">{{ item.pages }} 页</span></button>
           </li>
         </ul>
         <div class="toc-mode">
@@ -193,7 +202,7 @@ watch(meta, (value) => {
           <button class="paper-btn btn-quiet" type="button" :disabled="page?.mode !== 'whole'" @click="switchMode(false)">回到分页</button>
         </div>
         <p v-if="meta.splitRequired" class="split-note" role="note">
-          本书 {{ human(meta.book.bytes) }}，超过 {{ splitMb }}MB：已按章节拆成
+          本书 {{ human(meta.book.bytes) }}，超过 {{ splitMb }}MB：已按{{ unit }}拆成
           <b>{{ meta.chapters.length }}</b> 个可阅览网页，不提供整本渲染。
         </p>
       </nav>
@@ -208,7 +217,9 @@ watch(meta, (value) => {
         <div v-if="page?.html" class="page-host" @click="onBodyClick">
           <EpubHtml :html="page.html" />
         </div>
-        <p v-else-if="page?.mode !== 'whole'" class="field-hint">本章没有可显示的正文（图形若为 SVG 等类型会被挡下）。</p>
+        <p v-else-if="page?.mode !== 'whole'" class="field-hint">
+          {{ isPdf ? '本节没有可抽取的文字层。' : '本章没有可显示的正文（图形若为 SVG 等类型会被挡下）。' }}
+        </p>
 
         <nav class="page-nav" aria-label="翻页">
           <button class="paper-btn" type="button" :disabled="!page?.nav?.prev" @click="step(page?.nav?.prev)">上一页</button>
@@ -217,7 +228,10 @@ watch(meta, (value) => {
           </span>
           <button class="paper-btn seal-press" type="button" :disabled="!page?.nav?.next" @click="step(page?.nav?.next)">下一页</button>
         </nav>
-        <p class="field-hint">键盘 ← / → 可翻页；正文中的插图按需加载。</p>
+        <p class="field-hint">
+          键盘 ← / → 可翻页；<template v-if="isPdf">本页下发的是该{{ unit }}的文字层，不含扫描图像页。</template>
+          <template v-else>正文中的插图按需加载。</template>
+        </p>
       </article>
     </div>
   </div>
@@ -266,6 +280,12 @@ watch(meta, (value) => {
   color: var(--ink-soft);
   cursor: pointer;
   text-decoration: none;
+}
+/* PDF 的目录项带页数，右对齐成一行小注 */
+.toc-pages {
+  float: inline-end;
+  color: var(--ink-quiet);
+  font-size: var(--text-micro);
 }
 .toc-link:hover {
   border-inline-start-color: var(--rule-firm);
@@ -316,6 +336,17 @@ watch(meta, (value) => {
   block-size: 0;
   border-block-end: var(--grid-rule) solid var(--rule-firm);
   margin: var(--space-2) 0 var(--space-5);
+}
+/* PDF 一节里是若干张物理页：页间留一道虚线，读者才知道一页在哪里结束 */
+.reading-sheet :deep(.pdf-page + .pdf-page) {
+  margin-block-start: var(--space-4);
+  padding-block-start: var(--space-3);
+  border-block-start: var(--grid-rule) dashed var(--rule-quiet);
+}
+.reading-sheet :deep(.pdf-scan) {
+  color: var(--ink-mute);
+  font-size: var(--text-small);
+  text-indent: 0;
 }
 .page-nav {
   display: flex;

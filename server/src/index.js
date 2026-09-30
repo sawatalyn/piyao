@@ -12,6 +12,7 @@ import { contentRouter } from './routes/content.js';
 import { mediaRouter } from './routes/media.js';
 import { resourceRouter } from './routes/resources.js';
 import { libraryRouter } from './routes/library.js';
+import { opsRouter } from './routes/ops.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(here, '../../web/dist');
@@ -37,7 +38,7 @@ const apiLimiter = rateLimit({
 });
 const writeLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 40,
+  limit: config.writeLimitPerMinute,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   keyGenerator: (req) => (req.user ? `u:${req.user.username}` : `ip:${ipKeyGenerator(req.ip)}`),
@@ -55,6 +56,7 @@ app.use('/api', mediaRouter);
 app.use('/api', contentRouter);
 app.use('/api', resourceRouter);
 app.use('/api', libraryRouter);
+app.use('/api', opsRouter);
 
 app.get('/robots.txt', (_req, res) => {
   res.type('text/plain').send('User-agent: *\nDisallow: /api/\nDisallow: /edit\nDisallow: /reorder\nDisallow: /menu-editor\nDisallow: /users\nDisallow: /login\n');
@@ -62,7 +64,9 @@ app.get('/robots.txt', (_req, res) => {
 
 if (fs.existsSync(DIST)) {
   app.use(express.static(DIST, { index: false, fallthrough: true, maxAge: config.isProd ? '1h' : 0 }));
-  app.get(/^(?!\/api\/).*/i, (_req, res) => res.sendFile(path.join(DIST, 'index.html')));
+  // 必须把 root 交给 send：传绝对路径时它会把整条路径按段做 dotfile 检查，
+  // 站点被放到任何以点开头的目录（.httpdocs、.server……）时，单页兜底会 404 成"站点坏了"
+  app.get(/^(?!\/api\/).*/i, (_req, res) => res.sendFile('index.html', { root: DIST }));
 }
 
 app.use((req, res) => res.status(404).json({ error: 'no-route', path: req.path }));

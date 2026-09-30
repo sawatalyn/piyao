@@ -11,7 +11,8 @@ import path from 'node:path';
 import { spawn, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { encodePng } from '../server/scripts/png.js';
-import { demoEpub, multiChapterEpub } from '../server/scripts/epub.js';
+import { demoEpub, multiChapterEpub, zipStore } from '../server/scripts/epub.js';
+import { bigPdf, demoPdf } from '../server/scripts/pdf.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SWEEP = path.join(ROOT, '.scratch-verify');
@@ -59,7 +60,17 @@ async function boot(name, env = {}) {
   const child = spawn(process.execPath, [path.join(ROOT, 'server/src/index.js')], {
     cwd: ROOT,
     stdio: 'ignore',
-    env: { ...process.env, BW_PORT: String(port), BW_HOST: '127.0.0.1', BW_DATA_DIR: data, BW_SECRET: `sweep-${name}`, ...env },
+    env: {
+      ...process.env,
+      BW_PORT: String(port),
+      BW_HOST: '127.0.0.1',
+      BW_DATA_DIR: data,
+      BW_SECRET: `sweep-${name}`,
+      // 体检一轮要发上百次写：沿用产品默认 40/分钟会自己把自己限流成 429，
+      // 生产值不变（见 config.writeLimitPerMinute），只在自检实例里放宽。
+      BW_WRITE_LIMIT_PER_MIN: '300',
+      ...env,
+    },
   });
   const url = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 80; i += 1) {
@@ -216,6 +227,35 @@ async function sectionCore() {
   const csv = fs.readFileSync(path.join(inst.data, 'users.csv'), 'utf8');
   check('新用户确实写入 CSV', /reviewer/.test(csv));
 
+  // 名册是明文口令所在的文件：字段里的逗号/引号/换行必须按 RFC4180 往返，
+  // 否则一个换行就能把一行裂成两个身份（旧版按行 split 的读法正是如此）
+  const edge = await call('POST', '/api/users', {
+    body: { username: 'edgy.reviewer', password: 'a,b "c"\nPassw0rd', role: 'editor', displayName: '甲线\n乙线' },
+  });
+  const edgeRoster = (await call('GET', '/api/users')).body.items;
+  check(
+    '含换行的显示名不会裂成第二个身份',
+    edge.status === 200 &&
+      edgeRoster.some((u) => u.username === 'edgy.reviewer') &&
+      !edgeRoster.some((u) => /^乙线/.test(String(u.username))),
+    `${edgeRoster.length} 行：${edgeRoster.map((u) => u.username).join(',')}`
+  );
+  const edgeRow = edgeRoster.find((u) => u.username === 'edgy.reviewer');
+  check('显示名逐字往返（换行原样保留）', edgeRow?.displayName === '甲线\n乙线', JSON.stringify(edgeRow?.displayName));
+  const edgeLogin = await call('POST', '/api/auth/login', {
+    body: { username: 'edgy.reviewer', password: 'a,b "c"\nPassw0rd' },
+    standalone: true,
+    csrf: false,
+  });
+  check('含逗号与引号的口令可原样登录', edgeLogin.status === 200, String(edgeLogin.body?.error));
+  const edgeCsv = fs.readFileSync(path.join(inst.data, 'users.csv'), 'utf8');
+  check(
+    '落盘为 RFC4180 形态：跨行字段带引号、内嵌引号翻倍',
+    /"甲线\r?\n乙线"/.test(edgeCsv) && /""c""/.test(edgeCsv),
+    edgeCsv.split('\r\n').filter((line) => /edgy|乙线/.test(line)).join(' ⏎ ').slice(0, 80)
+  );
+  await call('DELETE', '/api/users/edgy.reviewer');
+
   const reviewer = await call('POST', '/api/auth/login', {
     body: { username: 'reviewer', password: 'Passw0rd!8' },
     standalone: true,
@@ -325,6 +365,85 @@ async function sectionDeep(goodId) {
   const second = await call('GET', `/api/posts/${pid}`);
   const renewed = /src="([^"]*exp=[^"]*)"/.exec(second.body.post.rumor.html)?.[1] || '';
   check('修订后仍能取到新鲜签名', renewed.includes('sig='), renewed.slice(0, 30));
+
+  // —— 版本台账：每次写入留一版完整快照，比对到字段与字词，快照绝不含短时效签名 ——
+  const revList = await call('GET', `/api/posts/${pid}/revisions`);
+  check(
+    '建档与修订各留一版快照（含动作与修订者）',
+    revList.status === 200 &&
+      revList.body.items.length === 2 &&
+      revList.body.items[0].kind === 'create' &&
+      revList.body.items[1].kind === 'update' &&
+      revList.body.items[1].by === revList.body.items[0].by,
+    `${revList.body?.items?.length} 版 · ${revList.body?.items?.map((r) => r.kind).join('>')}`
+  );
+  const revFile = await waitForFile(path.join(inst.data, 'revisions.json'), (c) => c.includes('snapshot'));
+  check(
+    '版本快照落盘为未签名图片路径（签名不进台账）',
+    /\/api\/media\//.test(revFile) && !/exp=|sig=/.test(revFile),
+    `exp= 出现 ${revFile.split('exp=').length - 1} 处`
+  );
+  const revPairFile = await call('GET', `/api/posts/${pid}/revisions/diff?from=${revList.body.items[0].id}&to=${revList.body.items[1].id}`);
+  const titleField = (revPairFile.body?.fields || []).find((f) => f.key === 'title');
+  check(
+    '两版比对指出标题改了哪个字（非词级字段直接给新旧值）',
+    revPairFile.status === 200 &&
+      Boolean(titleField?.before && titleField?.after) &&
+      titleField.before !== titleField.after &&
+      /已修订/.test(titleField.after),
+    `${titleField?.before} → ${titleField?.after}`
+  );
+  check('比对响应里也不带签名串', !/exp=|sig=/.test(JSON.stringify(revPairFile.body)));
+  const revThird = await call('PUT', `/api/posts/${pid}`, {
+    body: {
+      ...created.body.post,
+      title: '体检档案（第三次）：某食品添加物会导致某病',
+      verdict: { html: '<p>结论改成了实测无差异，仅保留样本说明。</p>', rating: '误导' },
+    },
+  });
+  const revs3 = (await call('GET', `/api/posts/${pid}/revisions`)).body;
+  check('第三次写入后共三版且 pair 默认指向最近两版', revThird.status === 200 && revs3.items.length === 3 && revs3.pair.to === revs3.items[2].id, `${revs3.items?.length} 版`);
+  const pair3 = await call('GET', `/api/posts/${pid}/revisions/diff?from=${revs3.items[1].id}&to=${revs3.items[2].id}`);
+  const verdictField = (pair3.body?.fields || []).find((f) => f.key === 'verdict');
+  check(
+    '正文比对按字/词给出增删分段（jsdiff）',
+    pair3.status === 200 &&
+      (verdictField?.segments || []).some((seg) => seg.op === 'del') &&
+      (verdictField?.segments || []).some((seg) => seg.op === 'add'),
+    JSON.stringify((verdictField?.segments || []).slice(0, 5))
+  );
+  const foreignDiff = await call('GET', `/api/posts/${pid}/revisions/diff?from=${revs3.items[0].id}&to=rseed1`);
+  check('拿别的档案的版本号来比对会被拒（404）', foreignDiff.status === 404, String(foreignDiff.body?.error));
+
+  // —— 全站版本台账总表（#39）：口径随写入即时更新（记忆化按数据代次失效），且能按档案筛选 ——
+  const ledgerBefore = await call('GET', '/api/ops/revisions?limit=200');
+  const pidRowsBefore = (ledgerBefore.body?.items || []).filter((row) => row.postId === pid).length;
+  const onlyPid = await call('GET', `/api/ops/revisions?post=${encodeURIComponent(pid)}&limit=200`);
+  check(
+    '按档案筛选只回该档的版本，且与本站写入的版本数吻合',
+    onlyPid.status === 200 &&
+      onlyPid.body.items.length === pidRowsBefore &&
+      onlyPid.body.items.every((row) => row.postId === pid),
+    `命中 ${onlyPid.body?.totals?.matched} / 该档 ${pidRowsBefore} 版`
+  );
+  await call('PUT', `/api/posts/${pid}`, {
+    body: { ...created.body.post, title: '体检档案（第四次）：再改一次以验证台账代次', verdict: { html: '<p>再改。</p>', rating: '误导' } },
+  });
+  const ledgerAfter = await call('GET', '/api/ops/revisions?limit=200');
+  const pidRowsAfter = (ledgerAfter.body?.items || []).filter((row) => row.postId === pid).length;
+  check(
+    '再写一版后台账口径即时跟上（记忆化按数据代次失效，不会读到旧缓存）',
+    ledgerAfter.status === 200 &&
+      pidRowsAfter === pidRowsBefore + 1 &&
+      ledgerAfter.body.totals.entries === ledgerBefore.body.totals.entries + 1,
+    `该档 ${pidRowsBefore}→${pidRowsAfter} 版 / 全站 ${ledgerBefore.body?.totals?.entries}→${ledgerAfter.body?.totals?.entries} 版`
+  );
+  check(
+    '台账行标出档案是否还在（alive），且流水只给表头不给快照',
+    ledgerAfter.body.items.every((row) => typeof row.alive === 'boolean' && typeof row.bytes === 'number') &&
+      !/snapshot|exp=|sig=/.test(JSON.stringify(ledgerAfter.body)),
+    `${ledgerAfter.body?.items?.length} 行`
+  );
 
   const notFound = await call('GET', '/api/posts/pnotexist');
   check('不存在的档案返回 404', notFound.status === 404);
@@ -449,6 +568,80 @@ async function sectionDeep(goodId) {
   );
   const extList = await call('GET', '/api/posts?size=20', { cookie: 'none' });
   check('外部替换后列表与索引口径一致', extList.body.items.length === 1 && extList.body.items[0].id === 'pexternal01');
+
+  // —— 馆务台账：磁盘 / 索引 / 在档引用三方对账，清理须点名且默认只预演 ——
+  const strayName = `zzorphan-${Date.now().toString(36)}.png`;
+  fs.writeFileSync(path.join(inst.data, 'media', strayName), makePng(8, 8));
+  // 一张上传后没被任何档案引用的图（unreferenced）+ 一张索引在、磁盘文件已被前面测试抹掉的图（死链）
+  const loose = await upload(makePng(12, 12));
+  const report = await call('GET', '/api/ops/media-report');
+  const orphanRow = (report.body?.orphanFiles || []).find((row) => row.file === strayName);
+  check(
+    '磁盘孤儿被点名，并带体积与 sha256 校验值',
+    report.status === 200 && orphanRow?.mine === true && /^[0-9a-f]{64}$/.test(String(orphanRow?.sha256)),
+    `${orphanRow?.bytes}B · ${String(orphanRow?.sha256).slice(0, 12)}`
+  );
+  const looseRow = (report.body?.unreferenced || []).find((row) => row.id === loose.body.id);
+  check('索引里有记录、档案已不再引用的条目被单列出来', Boolean(looseRow), `${String(looseRow?.file)} / ${report.body?.totals?.unreferenced} 条`);
+  const staleRow = (report.body?.staleIndex || []).find((row) => row.id === keep.body.id);
+  check('索引里有记录、磁盘文件已缺失的被列为死链（只能重传修复）', Boolean(staleRow), `${report.body?.totals?.staleIndex} 条 · ${String(staleRow?.file)}`);
+  check('对账口径自洽：索引记录数 = 在用 + 无引用 + 死链', report.body.totals.indexRecords === report.body.totals.used + report.body.totals.unreferenced + report.body.totals.staleIndex, JSON.stringify(report.body?.totals));
+
+  const refuse = await call('POST', '/api/ops/media-gc', { body: { ids: ['mnotexist'], files: ['../users.csv', 'README.md'], confirm: true } });
+  const refuseReasons = (refuse.body?.skipped || []).map((s) => s.reason).join(' ');
+  check(
+    '清理拒绝越界路径、非本站扩展名与不存在的记录，users.csv 完好',
+    refuse.status === 200 &&
+      (refuse.body?.skipped || []).length === 3 &&
+      /索引里没有/.test(refuseReasons) &&
+      /不合法/.test(refuseReasons) &&
+      /非本站写出的扩展名/.test(refuseReasons) &&
+      fs.existsSync(path.join(inst.data, 'users.csv')),
+    `${refuse.status} · ${refuseReasons}`
+  );
+
+  const preview = await call('POST', '/api/ops/media-gc', { body: { ids: [loose.body.id], files: [strayName], confirm: false } });
+  check(
+    '预演列出将要删的两项且一个字节都没动',
+    preview.body?.dryRun === true &&
+      preview.body.plan.indexRecords.length === 1 &&
+      preview.body.plan.orphanFiles.length === 1 &&
+      fs.existsSync(path.join(inst.data, 'media', strayName)) &&
+      fs.existsSync(path.join(inst.data, 'media', String(looseRow?.file))),
+    `将删 ${preview.body?.plan?.indexRecords?.length} 条 + ${preview.body?.plan?.orphanFiles?.length} 个 · 约 ${preview.body?.bytesFreed}B`
+  );
+  const executed = await call('POST', '/api/ops/media-gc', { body: { ids: [loose.body.id], files: [strayName], confirm: true } });
+  check(
+    '确认后磁盘孤儿与无引用记录一起消失',
+    executed.body?.dryRun === false &&
+      executed.body.removed.indexRecords.length === 1 &&
+      executed.body.removed.orphanFiles.length === 1 &&
+      !fs.existsSync(path.join(inst.data, 'media', strayName)) &&
+      !fs.existsSync(path.join(inst.data, 'media', String(looseRow?.file))),
+    `${executed.status} · 释放 ${executed.body?.bytesFreed}B`
+  );
+  // 索引落盘是排队的：先等这次删除真的到了盘上再判定
+  const indexAfter = await waitForFile(path.join(inst.data, 'media-index.json'), (c) => !c.includes(String(loose.body.id)));
+  check('索引文件同步去掉该记录（不留死引用）', !indexAfter.includes(String(loose.body.id)), `${JSON.parse(indexAfter).items.length} 条在索引`);
+
+  // 仍被在档档案引用的图片必须删不掉
+  const refPng = await upload(makePng(10, 10));
+  const refId = refPng.body?.id;
+  await call('POST', '/api/posts', {
+    body: {
+      ...POST_BODY({ title: '台账引用保护档案', tags: ['台账'] }),
+      rumor: { html: `<p>正文引用<img data-mid="${refId}" src="/api/media/${refId}" alt="证据" /></p>` },
+    },
+  });
+  const guarded = await call('POST', '/api/ops/media-gc', { body: { ids: [refId], files: [], confirm: true } });
+  const refRow = (await call('GET', '/api/ops/media-report')).body?.used?.find((row) => row.id === refId);
+  check(
+    '仍被档案引用的图片拒绝清理，并被列为在用',
+    (guarded.body?.skipped || []).some((s) => /仍被在档档案引用/.test(s.reason)) && Boolean(refRow),
+    `${guarded.status} · ${JSON.stringify(guarded.body?.skipped)}`
+  );
+  const logAnon = await call('GET', '/api/ops/security-log', { cookie: 'none' });
+  check('安全日志聚合需登录', logAnon.status === 401, String(logAnon.body?.error));
 }
 
 async function sectionShelves() {
@@ -589,7 +782,7 @@ async function sectionShelves() {
   const epub = demoEpub({ title: '馆方备份测试件', author: '辨妄阁', note: '接口自检用' });
   fs.writeFileSync(path.join(inst.data, 'library', '馆方备份测试件.epub'), epub);
   const reg2 = await call('POST', '/api/library/register', {
-    body: { file: '馆方备份测试件.epub', title: '馆方备份测试件', author: '辨妄阁', rights: '自产测试件' },
+    body: { file: '馆方备份测试件.epub', title: '馆方备份测试件', author: '辨妄阁', rights: '自产测试件', previewable: true },
   });
   check('磁盘上的真实 EPUB 可登记入册', reg2.status === 201 && reg2.body.book.bytes === epub.length, `${reg2.body?.book?.bytes}B`);
   const newBookId = reg2.body?.book?.id;
@@ -625,7 +818,7 @@ async function sectionShelves() {
   const small = multiChapterEpub({ title: '分页阅览测试册', chapters: 4 });
   fs.writeFileSync(path.join(inst.data, 'library', '分页阅览测试册.epub'), small);
   const regSmall = await call('POST', '/api/library/register', {
-    body: { file: '分页阅览测试册.epub', title: '分页阅览测试册', rights: '自产测试件' },
+    body: { file: '分页阅览测试册.epub', title: '分页阅览测试册', rights: '自产测试件', previewable: true },
   });
   const smallId = regSmall.body?.book?.id;
   check('多章节演示册可登记', regSmall.status === 201 && regSmall.body.book.bytes === small.length, `${regSmall.body?.book?.bytes}B`);
@@ -679,7 +872,7 @@ async function sectionShelves() {
   const big = multiChapterEpub({ title: '大书拆分测试册', chapters: 2, sections: 40, padBytes: 10 * 1024 * 1024 + 128 * 1024 });
   fs.writeFileSync(path.join(inst.data, 'library', '大书拆分测试册.epub'), big);
   const regBig = await call('POST', '/api/library/register', {
-    body: { file: '大书拆分测试册.epub', title: '大书拆分测试册', rights: '自产测试件' },
+    body: { file: '大书拆分测试册.epub', title: '大书拆分测试册', rights: '自产测试件', previewable: true },
   });
   const bigId = regBig.body?.book?.id;
   check('10MB 以上的书可登记为镜像', regBig.status === 201 && regBig.body.book.bytes > 10 * 1024 * 1024, `${(regBig.body?.book?.bytes / 1048576).toFixed(1)}MB`);
@@ -696,6 +889,237 @@ async function sectionShelves() {
   const wholeBig = await read(`${bigId}/reader/all?${tq}`);
   check('大书整本渲染被拒（409）', wholeBig.status === 409 && wholeBig.body.error === 'split-required', String(wholeBig.body?.message));
   fs.rmSync(path.join(inst.data, 'library', '大书拆分测试册.epub'), { force: true });
+
+  // —— 包内 XML 由严格解析器读取（@rgrove/parse-xml，ISC）：结构坏了要明确报错，导航坏了只降级 ——
+  const OPF_XML = [
+    '<?xml version="1.0" encoding="utf-8"?>',
+    '<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bid">',
+    '<metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="bid">urn:uuid:1</dc:identifier>',
+    '<dc:title>XML 口径测试册</dc:title><dc:language>zh-CN</dc:language></metadata>',
+    '<manifest><item href="Text/c1.xhtml" media-type="application/xhtml+xml" id="c1"/>',
+    '<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></manifest>',
+    '<spine><itemref linear="no" idref="nav"/><itemref idref="c1"/></spine></package>',
+  ].join('');
+  const C1_XML =
+    '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>c1</title></head><body><h2>正文一页</h2></body></html>';
+  const GOOD_CONTAINER =
+    '<?xml version="1.0"?><container xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>';
+  const navEpub = (nav) =>
+    zipStore([
+      { name: 'mimetype', data: 'application/epub+zip' },
+      { name: 'META-INF/container.xml', data: GOOD_CONTAINER },
+      { name: 'content.opf', data: OPF_XML },
+      { name: 'nav.xhtml', data: nav },
+      { name: 'Text/c1.xhtml', data: C1_XML },
+    ]);
+
+  fs.writeFileSync(
+    path.join(inst.data, 'library', '导航实体册.epub'),
+    navEpub(
+      '<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>目录</title></head><body><nav epub:type="toc"><ol><li><a href="Text/c1.xhtml">第一章&nbsp;未声明实体</a></li></ol></nav></body></html>'
+    )
+  );
+  const regEntity = await call('POST', '/api/library/register', {
+    body: { file: '导航实体册.epub', title: '导航实体册', rights: '自产测试件', previewable: true },
+  });
+  const entityMeta = await read(`${regEntity.body?.book?.id}/reader?${tq}`);
+  check(
+    'nav 里未声明的 HTML 实体只让章节名退化，整本书仍可读',
+    regEntity.status === 201 &&
+      entityMeta.status === 200 &&
+      entityMeta.body.chapters.length === 1 &&
+      /^第 1 节/.test(entityMeta.body.chapters[0].title),
+    `${entityMeta.status} · ${JSON.stringify(entityMeta.body?.chapters)}`
+  );
+  const entityPage = await read(`${regEntity.body?.book?.id}/reader/0?${tq}`);
+  check('退化书的正文照常下发', entityPage.status === 200 && /正文一页/.test(String(entityPage.body?.html)), `${entityPage.body?.bytes}B`);
+
+  fs.writeFileSync(
+    path.join(inst.data, 'library', '结构残缺册.epub'),
+    zipStore([
+      { name: 'mimetype', data: 'application/epub+zip' },
+      { name: 'META-INF/container.xml', data: '<?xml version="1.0"?><container><rootfiles><rootfile full-path="a.opf"' },
+      { name: 'content.opf', data: OPF_XML },
+    ])
+  );
+  const regBroken = await call('POST', '/api/library/register', {
+    body: { file: '结构残缺册.epub', title: '结构残缺册', rights: '自产测试件', previewable: true },
+  });
+  const brokenMeta = await read(`${regBroken.body?.book?.id}/reader?${tq}`);
+  check(
+    '残缺的 container.xml 被明确拒绝（422 epub-invalid），不再靠正则猜标签',
+    regBroken.status === 201 && brokenMeta.status === 422 && brokenMeta.body.error === 'epub-invalid' && /无法解析/.test(String(brokenMeta.body?.message)),
+    `${brokenMeta.status} · ${String(brokenMeta.body?.message).slice(0, 46)}`
+  );
+  for (const name of ['导航实体册.epub', '结构残缺册.epub']) fs.rmSync(path.join(inst.data, 'library', name), { force: true });
+
+  // —— 预览白名单：可下载不等于可预览，逐本由馆员勾选、默认关 ——
+  const off = multiChapterEpub({ title: '白名单测试册', chapters: 2 });
+  fs.writeFileSync(path.join(inst.data, 'library', '白名单测试册.epub'), off);
+  const regOff = await call('POST', '/api/library/register', {
+    body: { file: '白名单测试册.epub', title: '白名单测试册', rights: '自产测试件' },
+  });
+  const offId = regOff.body?.book?.id;
+  check('登记时不勾选即为"仅可下载"', regOff.status === 201 && regOff.body.book.previewable === false, String(regOff.body?.book?.previewable));
+  const offMeta = await read(`${offId}/reader?${tq}`);
+  check('未入白名单：章节目录被拒（403 preview-off）', offMeta.status === 403 && offMeta.body.error === 'preview-off', String(offMeta.body?.error));
+  const offPage = await read(`${offId}/reader/0?${tq}`);
+  check('未入白名单：逐章正文同样被拒', offPage.status === 403 && offPage.body.error === 'preview-off', String(offPage.body?.error));
+  const offAll = await read(`${offId}/reader/all?${tq}`);
+  check('未入白名单：整本渲染同样被拒', offAll.status === 403 && offAll.body.error === 'preview-off', String(offAll.body?.error));
+  const offAsset = await read(`${offId}/asset?p=cover.png&${tq}`);
+  check('未入白名单：包内插图被挡在门控之前', offAsset.status === 403 && offAsset.body.error === 'preview-off', String(offAsset.body?.error));
+  const offDownload = await call('GET', `/api/library/files/${offId}?${tq}`, { cookie: 'none', csrf: false, json: false });
+  check('关掉预览不影响凭口令下载', offDownload.status === 200 && offDownload.raw.length > 1000, `${offDownload.raw.length}B`);
+  const offBookHit = await read(`search?q=${encodeURIComponent('白名单测试册')}&${tq}`);
+  check('未入白名单的书仍可被书目级检索命中', offBookHit.body?.items?.some((i) => i.bookId === offId && i.kind === 'book'), `${offBookHit.body?.total} 项`);
+  const offChapterHit = await read(`search?q=${encodeURIComponent('第 2 章')}&${tq}`);
+  check(
+    '未入白名单时不外泄包内章节标题',
+    !offChapterHit.body?.items?.some((i) => i.bookId === offId && i.kind === 'chapter'),
+    JSON.stringify(offChapterHit.body?.items?.filter((i) => i.bookId === offId))
+  );
+  const flipOn = await call('PUT', `/api/library/files/${offId}`, { body: { previewable: true } });
+  const flippedMeta = await read(`${offId}/reader?${tq}`);
+  check(
+    '馆员勾选后即刻获得预览且原字段不被清空',
+    flipOn.status === 200 && flipOn.body.book.previewable === true && flipOn.body.book.title === '白名单测试册' && flippedMeta.status === 200,
+    `${flipOn.body?.book?.title} / ${String(flipOn.body?.book?.rights)}`
+  );
+  const chapterNow = await read(`search?q=${encodeURIComponent('第 2 章')}&${tq}`);
+  check('入白名单后其章节进入检索', chapterNow.body?.items?.some((i) => i.bookId === offId && i.kind === 'chapter'), `${chapterNow.body?.total} 项`);
+  const flipOff = await call('PUT', `/api/library/files/${offId}`, { body: { previewable: false } });
+  const afterFlipOff = await read(`${offId}/reader?${tq}`);
+  check(
+    '取消勾选即刻撤回预览',
+    flipOff.body?.book?.previewable === false && afterFlipOff.status === 403 && afterFlipOff.body.error === 'preview-off',
+    String(afterFlipOff.body?.error)
+  );
+  const unregistered = await call('DELETE', `/api/library/files/${offId}`);
+  const goneReader = await read(`${offId}/reader?${tq}`);
+  check('取消登记后阅览直接 404（白名单不再可达）', unregistered.status === 200 && goneReader.status === 404, String(goneReader.body?.error));
+  fs.rmSync(path.join(inst.data, 'library', '白名单测试册.epub'), { force: true });
+
+  // —— PDF 在线阅览：书签优先、无书签回退固定页数，>10MB 强制分节 ——
+  const pdf = demoPdf({ title: 'PDF 阅览测试册' });
+  fs.writeFileSync(path.join(inst.data, 'library', 'PDF阅览测试册.pdf'), pdf);
+  const regPdf = await call('POST', '/api/library/register', {
+    body: { file: 'PDF阅览测试册.pdf', title: 'PDF 阅览测试册', rights: '自产测试件', previewable: true },
+  });
+  const pdfId = regPdf.body?.book?.id;
+  check('PDF 按魔数登记并带出类型', regPdf.status === 201 && regPdf.body.book.type === 'application/pdf', `${regPdf.body?.book?.bytes}B`);
+  const pdfMeta = await read(`${pdfId}/reader?${tq}`);
+  check(
+    'PDF 以书签为节并标出 kind=pdf',
+    pdfMeta.status === 200 && pdfMeta.body.kind === 'pdf' && pdfMeta.body.chapters.length === 3,
+    `${pdfMeta.body?.chapters?.length} 节`
+  );
+  check('PDF 书签标题原样成为节名', pdfMeta.body.chapters?.[1]?.title === '第二章 · 证据与推理', String(pdfMeta.body.chapters?.[1]?.title));
+  check('PDF 目录带每节页数与切分依据', pdfMeta.body.chapters?.[0]?.pages === 2 && pdfMeta.body.meta.splitBy === 'outline', `pages=${pdfMeta.body.chapters?.[0]?.pages} · ${pdfMeta.body.meta?.splitBy}`);
+  check('小 PDF 不强制分页', pdfMeta.body.splitRequired === false);
+  const pdfPage = await read(`${pdfId}/reader/1?${tq}`);
+  check('PDF 正文来自文字层', pdfPage.status === 200 && /controlled trial/.test(String(pdfPage.body?.html)), String(pdfPage.body?.html?.slice(0, 44)));
+  check(
+    'PDF 正文按物理页成段并给出页号',
+    /class="pdf-page"/.test(String(pdfPage.body?.html)) && pdfPage.body.pages?.join(',') === '3,4',
+    JSON.stringify(pdfPage.body?.pages)
+  );
+  check('PDF 正文经净化（无脚本与行内样式）', !/script|style=|onload|<svg/i.test(String(pdfPage.body?.html)));
+  check('PDF 节间翻页指针指向下一节', pdfPage.body.nav?.next?.c === 2, JSON.stringify(pdfPage.body?.nav));
+  const pdfLast = await read(`${pdfId}/reader/2?${tq}`);
+  check('PDF 末节无下一页', pdfLast.body?.nav?.next === null, `part=${pdfLast.body?.part}`);
+  const pdfWhole = await read(`${pdfId}/reader/all?${tq}`);
+  check('阈值以下的小 PDF 可整本渲染', pdfWhole.status === 200 && /第一章 · 谣言样本/.test(String(pdfWhole.body?.html)), `${pdfWhole.body?.bytes}B`);
+  const pdfAsset = await read(`${pdfId}/asset?p=cover.png&${tq}`);
+  check('PDF 没有包内插图通道（409）', pdfAsset.status === 409 && pdfAsset.body.error === 'asset-epub-only', String(pdfAsset.body?.error));
+
+  const fat = bigPdf({ title: 'PDF 大书拆分测试册' });
+  fs.writeFileSync(path.join(inst.data, 'library', 'PDF大书拆分测试册.pdf'), fat);
+  const regFat = await call('POST', '/api/library/register', {
+    body: { file: 'PDF大书拆分测试册.pdf', title: 'PDF 大书拆分测试册', rights: '自产测试件', previewable: true },
+  });
+  const fatId = regFat.body?.book?.id;
+  const fatMeta = await read(`${fatId}/reader?${tq}`);
+  const perPages = fatMeta.body?.limits?.pagesPerChapter;
+  check(
+    '无书签的大 PDF 按固定页数切节',
+    fatMeta.status === 200 && fatMeta.body.meta.splitBy === 'pages' && fatMeta.body.chapters.length === Math.ceil(80 / perPages),
+    `${fatMeta.body?.chapters?.length} 节 / 每节 ${perPages} 页`
+  );
+  check('大 PDF 被标记为必须按节阅览', fatMeta.body.splitRequired === true);
+  const fatPage = await read(`${fatId}/reader/0?${tq}`);
+  check(
+    '大 PDF 单节正文受单页字节上限约束',
+    fatPage.body?.bytes <= fatMeta.body.limits.pageBytes && fatPage.body.splitBy === 'pages',
+    `${fatPage.body?.bytes}B · ${fatPage.body?.pages?.length} 页`
+  );
+  const fatWhole = await read(`${fatId}/reader/all?${tq}`);
+  check('大 PDF 整本渲染被拒（409）', fatWhole.status === 409 && fatWhole.body.error === 'split-required', String(fatWhole.body?.message));
+
+  const pdfHit = await read(`search?q=${encodeURIComponent('结论判定')}&${tq}`);
+  const pdfChapter = pdfHit.body?.items?.find((i) => i.bookId === pdfId && i.kind === 'chapter');
+  check(
+    'PDF 书签标题进入架上检索并直连该节',
+    pdfChapter?.chapterIndex === 2 && pdfChapter.href === `/library/${pdfId}/read?c=2`,
+    JSON.stringify(pdfChapter)
+  );
+
+  fs.writeFileSync(path.join(inst.data, 'library', '坏PDF.pdf'), Buffer.from('%PDF-1.4\n%%EOF\n'));
+  const regBad = await call('POST', '/api/library/register', {
+    body: { file: '坏PDF.pdf', title: '空壳 PDF', rights: '自产测试件', previewable: true },
+  });
+  const badMeta = await read(`${regBad.body?.book?.id}/reader?${tq}`);
+  check('结构不完整的 PDF 明确报错而不是 500', regBad.status === 201 && badMeta.status === 422 && badMeta.body.error === 'pdf-invalid', `${badMeta.status} · ${String(badMeta.body?.message)}`);
+  for (const name of ['PDF阅览测试册.pdf', 'PDF大书拆分测试册.pdf', '坏PDF.pdf']) {
+    fs.rmSync(path.join(inst.data, 'library', name), { force: true });
+  }
+
+  // —— 架上检索：元数据 + 包内章节标题，仍受口令与范围约束 ——
+  const nakedSearch = await read('search?q=%E7%AC%AC%202%20%E7%AB%A0');
+  check('无令牌检索被拒', nakedSearch.status === 403 && nakedSearch.body.error === 'grant-required', String(nakedSearch.body?.error));
+  const emptySearch = await read(`search?q=&${tq}`);
+  check('空检索词返回 400', emptySearch.status === 400 && emptySearch.body.error === 'bad-query', String(emptySearch.body?.message));
+
+  const byTitle = await read(`search?q=${encodeURIComponent('分页阅览测试册')}&${tq}`);
+  check(
+    '按书名可命中书目条目',
+    byTitle.status === 200 && byTitle.body.items.some((i) => i.kind === 'book' && i.bookId === smallId),
+    `${byTitle.body?.total} 项`
+  );
+  const byChapter = await read(`search?q=${encodeURIComponent('第 2 章')}&${tq}`);
+  const chapterHit = byChapter.body?.items?.find((i) => i.kind === 'chapter' && i.bookId === smallId);
+  check(
+    '按包内章节标题命中并给出直达链接',
+    byChapter.status === 200 && chapterHit?.chapterIndex === 1 && chapterHit.href === `/library/${smallId}/read?c=1`,
+    JSON.stringify(chapterHit || byChapter.body?.items?.slice(0, 2))
+  );
+  check('检索结果不泄露磁盘文件名与令牌', !/\.epub|sig=/.test(JSON.stringify(byChapter.body)));
+
+  // 检索只在口令覆盖的书目内进行：'测试' 同时命中范围内与范围外两本，据此证明范围外那本被查不到
+  const narrowSearch = await read(`search?q=${encodeURIComponent('测试')}&${narrowTq}`);
+  check(
+    '限定范围的口令检索不到范围外的书',
+    narrowSearch.status === 200 &&
+      narrowSearch.body.total > 0 &&
+      narrowSearch.body.items.every((i) => i.bookId === newBookId) &&
+      narrowSearch.body.searched === 1,
+    `${narrowSearch.body?.searched} 册 / ${narrowSearch.body?.total} 项 / 全为范围内=${narrowSearch.body?.items?.every((i) => i.bookId === newBookId)}`
+  );
+
+  // 单本解析失败不得把整次检索打成 500：塞一个"是 ZIP 但不是 EPUB"的文件
+  const notEpub = zipStore([{ name: 'readme.txt', data: '这不是 EPUB' }]);
+  fs.writeFileSync(path.join(inst.data, 'library', '伪EPUB.epub'), notEpub);
+  const regFake = await call('POST', '/api/library/register', {
+    body: { file: '伪EPUB.epub', title: '伪 EPUB 检索耐受测试', rights: '自产测试件', previewable: true },
+  });
+  const fakeSearch = await read(`search?q=${encodeURIComponent('第 2 章')}&${tq}`);
+  check(
+    '坏包只被跳过、不影响其余书目命中',
+    regFake.status === 201 && fakeSearch.status === 200 && fakeSearch.body.skipped >= 1 && fakeSearch.body.total > 0,
+    `skipped ${fakeSearch.body?.skipped} · 命中 ${fakeSearch.body?.total}`
+  );
+  await call('DELETE', `/api/library/files/${regFake.body.book.id}`);
+  fs.rmSync(path.join(inst.data, 'library', '伪EPUB.epub'), { force: true });
 
   const wrong = await call('POST', '/api/library/unlock', { body: { code: 'wrong-one' }, cookie: 'none', csrf: false });
   check('错口令被拒', wrong.status === 401, String(wrong.body?.error));
@@ -774,6 +1198,60 @@ async function sectionLock() {
   check('爬虫框架 UA 无会话即拒', uaBot.status === 403);
 }
 
+async function sectionWriteLimit() {
+  // 写限流阈值现在是可配置项（BW_WRITE_LIMIT_PER_MIN），这里显式验证它真的会挡住
+  inst = await boot('writelimit', { BW_WRITE_LIMIT_PER_MIN: '3' });
+  base = inst.url;
+  await login();
+  const menuBody = { items: [{ moduleId: 'home', visible: true }], known: ['home'] };
+  const statuses = [];
+  let code = '';
+  for (let i = 0; i < 4; i += 1) {
+    const r = await call('PUT', '/api/menu', { body: menuBody });
+    statuses.push(r.status);
+    if (r.status === 429) code = String(r.body?.error);
+  }
+  check(
+    '写操作限流按配置生效（前 3 次过、第 4 次 429）',
+    statuses.slice(0, 3).every((s) => s === 200) && statuses[3] === 429 && code === 'write-rate-limited',
+    statuses.join(',') + ' · ' + code
+  );
+  const readWhileLimited = await call('GET', '/api/menu');
+  check('限流只挡写、不挡读', readWhileLimited.status === 200, String(readWhileLimited.status));
+
+  // 版本保留上限同样是配置项：超出即丢最旧，台账不能无限膨胀
+  inst = await boot('keeplimit', { BW_REVISION_KEEP: '2' });
+  base = inst.url;
+  await login();
+  const createdPost = await call('POST', '/api/posts', { body: POST_BODY({ title: '版本上限档案', tags: ['版本'] }) });
+  const kid = createdPost.body?.post?.id;
+  for (let i = 2; i <= 4; i += 1) {
+    await call('PUT', `/api/posts/${kid}`, { body: POST_BODY({ title: `版本上限档案 第${i}次`, tags: ['版本'] }) });
+  }
+  const kept = await call('GET', `/api/posts/${kid}/revisions`);
+  check(
+    '版本数超过 BW_REVISION_KEEP 时丢最旧、留下最近两版',
+    kept.body?.keep === 2 && kept.body.items.length === 2 && kept.body.items[1].title === '版本上限档案 第4次',
+    `${kept.body?.items?.length} 版 · 末版「${kept.body?.items?.[1]?.title}」`
+  );
+  const ledgerKeep = await call('GET', `/api/ops/revisions?post=${encodeURIComponent(kid)}&limit=50`);
+  check(
+    '全站台账也遵守保留上限：该档只留最近两版，keep 口径随实例配置',
+    ledgerKeep.status === 200 && ledgerKeep.body.totals.keep === 2 && ledgerKeep.body.items.length === 2,
+    `keep=${ledgerKeep.body?.totals?.keep} / 该档 ${ledgerKeep.body?.items?.length} 版`
+  );
+  // 撤档不抹历史（DEVELOPMENT §七 R-14）：删档后台账里该档仍在册，但标为 alive=false
+  await call('DELETE', `/api/posts/${kid}`);
+  const ledgerOrphan = await call('GET', `/api/ops/revisions?post=${encodeURIComponent(kid)}&limit=50`);
+  check(
+    '删档后台账仍保留其历史版本，但每行标为已撤档（alive=false）',
+    ledgerOrphan.status === 200 &&
+      ledgerOrphan.body.items.length === 2 &&
+      ledgerOrphan.body.items.every((row) => row.alive === false && row.postId === kid),
+    `${ledgerOrphan.body?.items?.length} 版仍在册 / alive ${JSON.stringify((ledgerOrphan.body?.items || []).map((r) => r.alive))}`
+  );
+}
+
 async function main() {
   try {
     const { goodId } = await sectionCore();
@@ -782,6 +1260,7 @@ async function main() {
     await sectionProd();
     await sectionHash();
     await sectionLock();
+    await sectionWriteLimit();
   } catch (err) {
     check('体检脚本自身未抛异常', false, err?.stack?.split('\n').slice(0, 2).join(' | ') || String(err));
   } finally {

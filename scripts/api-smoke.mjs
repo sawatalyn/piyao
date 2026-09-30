@@ -3,6 +3,8 @@
  * 端到端接口自检：不依赖浏览器，直接打后端。
  * 用法：先 `pnpm start`（或 dev:server），再 `node scripts/api-smoke.mjs`
  */
+import { MODULE_IDS } from '../web/src/modules/registry.js';
+
 const BASE = process.env.BW_SMOKE_BASE || 'http://127.0.0.1:8787';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/129 Safari/537.36';
 
@@ -139,16 +141,142 @@ const run = async () => {
     body: { items: [{ moduleId: 'home', visible: true }, { moduleId: 'users', visible: false }], known: ['home', 'users'] },
   });
   check('菜单编辑可保存', menu.status === 200 && menu.data.items.length === 2);
+  // 还原必须按注册表全量：写死一份短清单会把后加的功能（资源库、镜像站、馆务台账）从菜单里抹掉
   await call('PUT', '/api/menu', {
     body: {
-      items: ['home', 'search', 'tags', 'submit', 'reorder', 'menu-editor', 'users', 'about'].map((moduleId, order2) => ({
-        moduleId,
-        visible: true,
-        order: order2,
-      })),
-      known: ['home', 'search', 'tags', 'submit', 'reorder', 'menu-editor', 'users', 'about'],
+      items: MODULE_IDS.map((moduleId, order2) => ({ moduleId, visible: true, order: order2 })),
+      known: MODULE_IDS,
     },
   });
+
+  // —— 版本台账（#32）：建档即有 v1，修订后有 v2，可按字段与字词比对 ——
+  const revFirst = await call('GET', `/api/posts/${newId}/revisions`);
+  check(
+    '建档即写入首版快照（含动作与修订者）',
+    revFirst.status === 200 &&
+      revFirst.data.items.length === 1 &&
+      revFirst.data.items[0].kind === 'create' &&
+      revFirst.data.items[0].by === '档案管理员',
+    `${revFirst.data?.items?.length} 版 / ${revFirst.data?.items?.[0]?.by}`
+  );
+  const revised = await call('PUT', `/api/posts/${newId}`, {
+    body: {
+      title: '自检样例：隔夜茶会致癌吗（第二版）',
+      tags: ['自检', '饮茶'],
+      rumor: { html: '<p>网传的说法来自一条拼接短视频。</p>' },
+      verdict: { html: '<p>实测增量远低于限值，关键在于存放是否敞口与是否加盖。</p>' },
+      sources: [{ title: '自检材料', org: '示例机构' }],
+      meta: { editor: '自检', level: '中', reviewAt: '2099-01-01' },
+    },
+  });
+  const revSecond = await call('GET', `/api/posts/${newId}/revisions`);
+  const pairIds = (revSecond.data?.items || []).map((row) => row.id);
+  check(
+    '修订后版本数 +1 且默认 pair 指向最近两版',
+    revised.status === 200 && revSecond.data?.items?.length === 2 && revSecond.data.pair.from === pairIds[0] && revSecond.data.pair.to === pairIds[1],
+    `${revSecond.data?.items?.length} 版`
+  );
+  const diffPair = await call('GET', `/api/posts/${newId}/revisions/diff?from=${pairIds[0]}&to=${pairIds[1]}`);
+  const rumorField = (diffPair.data?.fields || []).find((row) => row.key === 'rumor');
+  check(
+    '两版比对给出逐字段差异（标题、正文、危害等级都在列）',
+    diffPair.status === 200 &&
+      ['title', 'rumor', 'level'].every((key) => diffPair.data.fields.some((row) => row.key === key)),
+    `${diffPair.data?.fields?.length} 处差异`
+  );
+  check(
+    '正文差异按字/词标注增删（不是只给新旧两段）',
+    (rumorField?.segments || []).some((seg) => seg.op === 'del') && (rumorField?.segments || []).some((seg) => seg.op === 'add'),
+    JSON.stringify((rumorField?.segments || []).slice(0, 4))
+  );
+  const revDemo = await call('GET', `/api/posts/${first.id}/revisions`);
+  const revDemoRaw = JSON.stringify(revDemo.data);
+  check(
+    '版本接口只回表头：不给快照正文、不给签名串（落盘口径由全量体检验）',
+    revDemo.status === 200 && !/\/api\/media\/|snapshot|exp=|sig=/.test(revDemoRaw),
+    `${revDemo.data?.items?.length} 版 · ${revDemoRaw.length}B`
+  );
+  const crossDiff = await call('GET', `/api/posts/${newId}/revisions/diff?from=${pairIds[0]}&to=rseed1`);
+  check('别的档案的版本 id 不能拿来比对（404）', crossDiff.status === 404, String(crossDiff.data?.error));
+
+  // —— 馆务台账（#30 / #31）：只读对账 + 日志聚合，清理走全量体检的隔离实例 ——
+  const mediaReport = await call('GET', '/api/ops/media-report');
+  check(
+    '登录后可读媒体台账，三方对账口径齐备',
+    mediaReport.status === 200 && ['used', 'unreferenced', 'orphanFiles', 'staleIndex', 'reclaimableBytes'].every((key) => Number.isFinite(mediaReport.data.totals[key])),
+    `索引 ${mediaReport.data?.totals?.indexRecords} / 磁盘 ${mediaReport.data?.totals?.diskFiles} / 孤儿 ${mediaReport.data?.totals?.orphanFiles}`
+  );
+  const dryRun = await call('POST', '/api/ops/media-gc', {
+    body: { ids: mediaReport.data?.unreferenced?.slice(0, 1).map((row) => row.id) || [], files: [], confirm: false },
+  });
+  check(
+    '清理默认是预演：confirm 不为 true 就一个字节都不动',
+    dryRun.status === 200 && dryRun.data.dryRun === true && dryRun.data.removed.indexRecords.length === 0,
+    `预演将删 ${dryRun.data?.plan?.indexRecords?.length} 条 / 被拒 ${dryRun.data?.skipped?.length} 项`
+  );
+  const logAll = await call('GET', '/api/ops/security-log?limit=5');
+  const csrfSignal = (logAll.data?.signals || []).find((row) => row.key === 'csrf-denied');
+  check(
+    '安全日志聚合把本轮缺 CSRF 的写操作记成 csrf-denied',
+    logAll.status === 200 && Number(csrfSignal?.count) >= 1,
+    `csrf-denied=${csrfSignal?.count} · 共 ${logAll.data?.totals?.entries} 条`
+  );
+  check(
+    '聚合给出事件 / 来源 / 按日三种口径',
+    logAll.data?.byEvent?.length > 0 && logAll.data?.byIp?.length > 0 && logAll.data?.byDay?.length > 0,
+    `${logAll.data?.byEvent?.length} 类事件 / ${logAll.data?.byIp?.length} 个来源`
+  );
+  const logFiltered = await call('GET', '/api/ops/security-log?event=csrf-denied&limit=2');
+  check(
+    '按事件筛选只回到该类事件并遵守条数上限',
+    logFiltered.status === 200 &&
+      logFiltered.data.recent.length > 0 &&
+      logFiltered.data.recent.length <= 2 &&
+      logFiltered.data.recent.every((row) => row.event === 'csrf-denied'),
+    `${logFiltered.data?.recent?.length} 条 / 命中 ${logFiltered.data?.totals?.matched}`
+  );
+
+  // —— 版本台账总表（#39）：全站口径，只回表头不回快照 ——
+  const ledgerAll = await call('GET', '/api/ops/revisions?limit=50');
+  const ledgerRaw = JSON.stringify(ledgerAll.data ?? null);
+  check(
+    '登录后可读全站版本台账，口径齐备（版本数/涉及档案/快照字节/每档保留/已撤档）',
+    ledgerAll.status === 200 &&
+      Number.isFinite(ledgerAll.data?.totals?.entries) &&
+      Number.isFinite(ledgerAll.data?.totals?.posts) &&
+      Number.isFinite(ledgerAll.data?.totals?.bytes) &&
+      Number.isFinite(ledgerAll.data?.totals?.keep) &&
+      Number.isFinite(ledgerAll.data?.totals?.orphanPosts) &&
+      Array.isArray(ledgerAll.data?.items) &&
+      Array.isArray(ledgerAll.data?.posts),
+    `${ledgerAll.data?.totals?.entries} 版 / ${ledgerAll.data?.totals?.posts} 档 / ${ledgerAll.data?.totals?.bytes}B / 撤档 ${ledgerAll.data?.totals?.orphanPosts}`
+  );
+  check(
+    '台账流水行只给表头，不外泄快照正文或签名串',
+    ledgerAll.status === 200 &&
+      !/snapshot|\/api\/media\/|exp=|sig=/.test(ledgerRaw) &&
+      (ledgerAll.data.items.length === 0 ||
+        ledgerAll.data.items.every((row) => 'id' in row && 'version' in row && 'kind' in row && 'postId' in row && 'alive' in row && 'bytes' in row)),
+    `${ledgerAll.data?.items?.length} 行 · ${ledgerRaw.length}B`
+  );
+  const ledgerCreate = await call('GET', '/api/ops/revisions?kind=create&limit=50');
+  check(
+    '按动作筛选只回建档版本（筛选落到查询上）',
+    ledgerCreate.status === 200 &&
+      ledgerCreate.data.items.every((row) => row.kind === 'create'),
+    `建档 ${ledgerCreate.data?.items?.length} 行 / 命中 ${ledgerCreate.data?.totals?.matched}`
+  );
+  const anyPostId = ledgerAll.data?.items?.[0]?.postId || '';
+  if (anyPostId) {
+    const ledgerByPost = await call('GET', `/api/ops/revisions?post=${encodeURIComponent(anyPostId)}&limit=50`);
+    check(
+      '按档案筛选只回该档的版本',
+      ledgerByPost.status === 200 &&
+        ledgerByPost.data.items.length > 0 &&
+        ledgerByPost.data.items.every((row) => row.postId === anyPostId),
+      `${anyPostId} · ${ledgerByPost.data?.items?.length} 行`
+    );
+  }
 
   const users = await call('GET', '/api/users');
   check('登录后可读用户名册', users.status === 200 && users.data.items.some((u) => u.username === 'admin'));
@@ -175,17 +303,28 @@ const run = async () => {
   check('登出成功', logout.status === 200);
   const afterLogout = await call('GET', '/api/auth/me');
   check('登出后会话失效', afterLogout.data.user === null);
+  const opsAnon = await call('GET', '/api/ops/media-report');
+  const logAnon = await call('GET', '/api/ops/security-log');
+  const ledgerAnon = await call('GET', '/api/ops/revisions');
+  check(
+    '登出后媒体台账、安全日志与版本台账总表都回到需登录',
+    opsAnon.status === 401 && logAnon.status === 401 && ledgerAnon.status === 401,
+    `${opsAnon.status} / ${logAnon.status} / ${ledgerAnon.status}`
+  );
 
   for (const id of beforePinIds) await call('POST', `/api/posts/${id}/pin`, { pinned: true });
   const menuRestore = await call('GET', '/api/menu');
-  if (menuRestore.data?.items?.length !== 8) {
-    await call('PUT', '/api/menu', {
-      body: {
-        items: ['home', 'search', 'tags', 'submit', 'reorder', 'menu-editor', 'users', 'about'].map((moduleId, index) => ({ moduleId, visible: true, order: index })),
-        known: ['home', 'search', 'tags', 'submit', 'reorder', 'menu-editor', 'users', 'about'],
-      },
-    });
-  }
+  check(
+    '菜单还原后与注册表条目数一致',
+    menuRestore.status === 200 && menuRestore.data.items.length === MODULE_IDS.length,
+    `${menuRestore.data?.items?.length} 项 / 注册表 ${MODULE_IDS.length} 项`
+  );
+  await call('PUT', '/api/menu', {
+    body: {
+      items: MODULE_IDS.map((moduleId, index) => ({ moduleId, visible: true, order: index })),
+      known: MODULE_IDS,
+    },
+  });
 
   const failed = results.filter((r) => !r.pass);
   console.log(`\n合计 ${results.length} 项，失败 ${failed.length} 项。`);

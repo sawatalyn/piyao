@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fsp from 'node:fs/promises';
+import { parseXml } from '@rgrove/parse-xml';
 import { config } from '../config.js';
 import { readZipDirectory, readZipEntry, zipResolve, ZipError } from './zipRead.js';
 import { sanitizeEpubHtml, splitHtmlPages } from '../security/sanitize.js';
@@ -14,6 +15,7 @@ const CACHE_MAX = 8;
 const SAFE_IMAGES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
 const parsedCache = new Map();
 
+/** 只服务 docTitle 那类"HTML 片段里取个标题"的场合：正文是 HTML，不按 XML 严格要求闭合与实体 */
 const decode = (text) =>
   String(text ?? '')
     .replace(/&lt;/g, '<')
@@ -26,20 +28,49 @@ const decode = (text) =>
     .replace(/&amp;/g, '&')
     .trim();
 
-function attributes(tag) {
-  const out = {};
-  const re = /([:a-zA-Z_][-:.a-zA-Z0-9_]*)\s*=\s*"([^"]*)"|([:a-zA-Z_][-:.a-zA-Z0-9_]*)\s*=\s*'([^']*)'/g;
-  let match;
-  while ((match = re.exec(String(tag || '')))) {
-    if (match[1]) out[match[1].toLowerCase()] = match[2];
-    else out[match[3].toLowerCase()] = match[4];
+/**
+ * 包内 XML（container.xml / OPF / nav / NCX）一律交给 parse-xml（ISC、零依赖）严格解析。
+ * 早先用正则读标签属于自己造 XML 解析器：属性顺序、命名空间、嵌套 navPoint、
+ * 实体写法任一不符就静默读错，而这类书是要给读者看的。
+ * 章节正文不在这里解析——它按 HTML 走 sanitize-html 白名单。
+ */
+function docOf(text, label, { tolerant = false } = {}) {
+  try {
+    return parseXml(String(text ?? '')).root;
+  } catch (err) {
+    // tolerant 只用于"缺了顶多没有章节名"的来源，不至于让整本书读不出来
+    if (tolerant) return null;
+    throw new ZipError(`${label} 无法解析：${err?.message || 'XML 结构错误'}`);
   }
+}
+
+const localName = (el) => String(el?.name || '').replace(/^[\w.-]+:/, '').toLowerCase();
+const elementsOf = (el) => (el?.children || []).filter((node) => node.type === 'element');
+
+function textOf(el) {
+  let out = '';
+  for (const node of el?.children || []) {
+    if (node.type === 'text' || node.type === 'cdata') out += node.text;
+    else if (node.type === 'element') out += ` ${textOf(node)} `;
+  }
+  return out.replace(/\s+/g, ' ').trim();
+}
+
+/** 按"去掉命名空间前缀后的标签名"取元素，文档序返回（dc:title 与 title 一视同仁） */
+function findAll(root, name) {
+  const out = [];
+  const visit = (el) => {
+    if (localName(el) === name) out.push(el);
+    for (const child of elementsOf(el)) visit(child);
+  };
+  if (root) visit(root);
   return out;
 }
 
-const openTags = (html, name) => String(html || '').match(new RegExp(`<${name}\\b[^>]*>`, 'gi')) || [];
+const firstAttr = (root, name, attr) => String(findAll(root, name)[0]?.attributes?.[attr] || '');
+const firstText = (root, name) => textOf(findAll(root, name)[0]);
 
-async function textOf(file, entries, name) {
+async function entryText(file, entries, name) {
   const entry = entries.get(name);
   if (!entry) throw new ZipError(`EPUB 包内缺少 ${name}`);
   return (await readZipEntry(file, entry, META_MAX)).toString('utf8');
@@ -50,27 +81,29 @@ async function rootfileOf(file, entries) {
     ? 'META-INF/container.xml'
     : [...entries.keys()].find((key) => key.toLowerCase() === 'meta-inf/container.xml');
   if (!name) throw new ZipError('缺少 META-INF/container.xml，不是有效的 EPUB');
-  const rootTag = (await textOf(file, entries, name)).match(/<rootfile\b[^>]*>/i)?.[0];
-  const fullPath = rootTag ? attributes(rootTag)['full-path'] : '';
+  const fullPath = firstAttr(docOf(await entryText(file, entries, name), 'container.xml'), 'rootfile', 'full-path');
   if (!fullPath) throw new ZipError('EPUB 未声明包文档（rootfile）');
   return fullPath.replace(/\\/g, '/').replace(/^\/+/, '');
 }
 
 function parseOpf(xml) {
+  const root = docOf(xml, '包文档（OPF）');
   const manifest = new Map();
-  for (const tag of openTags(xml, 'item')) {
-    const a = attributes(tag);
-    if (a.id) manifest.set(a.id, { href: a.href || '', mediaType: (a['media-type'] || '').toLowerCase(), properties: a.properties || '' });
+  for (const item of findAll(root, 'item')) {
+    const a = item.attributes || {};
+    if (a.id) manifest.set(a.id, { href: a.href || '', mediaType: String(a['media-type'] || '').toLowerCase(), properties: a.properties || '' });
   }
-  const spineTag = xml.match(/<spine\b[^>]*>/i)?.[0] || '';
-  const spineBlock = xml.match(/<spine\b[\s\S]*?<\/spine>/i)?.[0] || '';
-  const refs = openTags(spineBlock, 'itemref').map((tag) => attributes(tag));
+  const spine = findAll(root, 'spine')[0];
+  const refs = elementsOf(spine)
+    .filter((el) => localName(el) === 'itemref')
+    .map((el) => el.attributes || {})
+    .filter((a) => a.idref && a.linear !== 'no');
   return {
     manifest,
-    refs: refs.filter((a) => a.idref && a.linear !== 'no'),
-    tocId: attributes(spineTag).toc || '',
-    title: decode(xml.match(/<dc:title[^>]*>([\s\S]*?)<\/dc:title>/i)?.[1] || ''),
-    language: decode(xml.match(/<dc:language[^>]*>([\s\S]*?)<\/dc:language>/i)?.[1] || ''),
+    refs,
+    tocId: String(spine?.attributes?.toc || ''),
+    title: firstText(root, 'title'),
+    language: firstText(root, 'language'),
   };
 }
 
@@ -85,11 +118,11 @@ async function labelsOf(file, entries, baseDir, opf) {
   if (navItem) {
     const navName = zipResolve(baseDir, navItem.href);
     if (navName && entries.has(navName)) {
-      const nav = (await textOf(file, entries, navName)).match(/<nav\b[^>]*epub:type="toc"[^>]*>([\s\S]*?)<\/nav>/i)?.[1] || '';
-      for (const tag of nav.match(/<a\b[^>]*>[\s\S]*?<\/a>/gi) || []) {
-        const href = attributes(tag).href || '';
-        const text = decode(tag.replace(/<[^>]*>/g, ' '));
-        put(href.split('#')[0], text);
+      const navRoot = docOf(await entryText(file, entries, navName), 'nav.xhtml', { tolerant: true });
+      const toc = findAll(navRoot, 'nav').find((el) => /\btoc\b/.test(String(el.attributes?.['epub:type'] || '').toLowerCase()));
+      for (const link of findAll(toc || navRoot, 'a')) {
+        const href = String(link.attributes?.href || '');
+        if (href) put(href.split('#')[0], textOf(link));
       }
     }
   }
@@ -97,11 +130,11 @@ async function labelsOf(file, entries, baseDir, opf) {
   if (ncxItem && labels.size === 0) {
     const ncxName = zipResolve(baseDir, ncxItem.href);
     if (ncxName && entries.has(ncxName)) {
-      const ncx = await textOf(file, entries, ncxName);
-      for (const block of ncx.match(/<navPoint\b[\s\S]*?<\/navPoint>/gi) || []) {
-        const text = block.match(/<text[^>]*>([\s\S]*?)<\/text>/i)?.[1];
-        const src = attributes(block.match(/<content\b[^>]*>/i)?.[0] || '').src;
-        if (src) put(src.split('#')[0], decode(text || ''));
+      const ncxRoot = docOf(await entryText(file, entries, ncxName), 'NCX', { tolerant: true });
+      // 文档序遍历：父级 navPoint 先入表，子级同名路径不会把父级标题冲掉
+      for (const point of findAll(ncxRoot, 'navpoint')) {
+        const src = String(findAll(point, 'content')[0]?.attributes?.src || '');
+        if (src) put(src.split('#')[0], textOf(findAll(point, 'text')[0]));
       }
     }
   }
@@ -112,7 +145,7 @@ async function parse(file) {
   const entries = await readZipDirectory(file);
   const opfName = await rootfileOf(file, entries);
   const baseDir = path.posix.dirname(opfName) === '.' ? '' : path.posix.dirname(opfName);
-  const opf = parseOpf(await textOf(file, entries, opfName));
+  const opf = parseOpf(await entryText(file, entries, opfName));
   const labels = await labelsOf(file, entries, baseDir, opf);
   const chapters = [];
   for (const ref of opf.refs) {

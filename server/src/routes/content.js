@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { posts, RATINGS } from '../store/posts.js';
+import { revisions } from '../store/revisions.js';
 import { menu } from '../store/menu.js';
 import { config } from '../config.js';
 import { requireAuth } from '../security/middleware.js';
@@ -89,6 +90,32 @@ contentRouter.get('/menu', (_req, res) => {
 contentRouter.put('/menu', requireAuth, (req, res) => {
   const known = Array.isArray(req.body?.known) ? req.body.known.map(String) : [];
   res.json({ items: menu.save(req.body?.items, known) });
+});
+
+/* —— 修订档案：版本清单与两版比对（与维基百科的"历史"同一公开口径） —— */
+
+contentRouter.get('/posts/:id/revisions', (req, res) => {
+  const items = revisions.list(req.params.id);
+  if (!items.length) return res.status(404).json({ error: 'no-revisions', message: '该档案没有版本记录' });
+  const current = posts.all().find((p) => p.id === req.params.id);
+  const newest = items[items.length - 1];
+  res.json({
+    post: {
+      id: req.params.id,
+      title: current?.title || newest.title,
+      exists: Boolean(current),
+      updatedAt: current?.updatedAt || newest.at,
+    },
+    keep: config.revisionKeep,
+    items,
+    pair: { from: (items.length > 1 ? items[items.length - 2] : items[0]).id, to: newest.id },
+  });
+});
+
+contentRouter.get('/posts/:id/revisions/diff', (req, res) => {
+  const pair = revisions.headersWithSnapshot(req.params.id, String(req.query.from || ''), String(req.query.to || ''));
+  if (!pair) return res.status(404).json({ error: 'no-revision', message: '版本不存在或不属于该档案' });
+  return res.json(pair);
 });
 
 contentRouter.get('/bootstrap', (_req, res) => {

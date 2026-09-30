@@ -9,9 +9,10 @@ const auth = useAuthStore();
 const library = useLibraryStore();
 
 const blankKey = () => ({ code: '', label: '', hint: '', scope: 'all', fileIds: [], expiresAt: '' });
-const blankBook = () => ({ file: '', title: '', author: '', translator: '', group: '', note: '', sourceUrl: '', rights: '' });
+const blankBook = () => ({ file: '', title: '', author: '', translator: '', group: '', note: '', sourceUrl: '', rights: '', previewable: false });
 
 const code = ref('');
+const term = ref('');
 const keyDraft = ref(blankKey());
 const bookDraft = ref(blankBook());
 const busy = ref(false);
@@ -27,9 +28,18 @@ const grantUntil = computed(() =>
 );
 
 onMounted(async () => {
+  library.clearSearch();
   await library.load();
   if (auth.isAuthed) await library.loadManaged().catch(() => undefined);
 });
+
+async function runSearch() {
+  if (!term.value.trim()) {
+    library.clearSearch();
+    return;
+  }
+  await library.search(term.value);
+}
 
 async function submitUnlock() {
   busy.value = true;
@@ -43,6 +53,10 @@ async function submitUnlock() {
 function pickPending(item) {
   bookDraft.value = { ...blankBook(), file: item.file, title: item.file.replace(/\.(epub|pdf)$/i, '') };
 }
+
+/** 只有解析器覆盖得到的类型才有预览可言 */
+const previewKind = (type) =>
+  type === 'application/epub+zip' ? 'epub' : type === 'application/pdf' ? 'pdf' : null;
 
 async function registerBook() {
   busy.value = true;
@@ -59,6 +73,10 @@ async function registerBook() {
 
 async function toggleBook(item) {
   await library.updateBook(item.id, { ...item, enabled: !item.enabled });
+}
+
+async function togglePreview(item) {
+  await library.updateBook(item.id, { ...item, previewable: item.previewable !== true });
 }
 
 async function confirmRemoveBook() {
@@ -104,7 +122,8 @@ function fileIdList(event) {
       <div class="sheet-title-rule" aria-hidden="true"></div>
       <p class="sheet-lead">
         为<b>借书柜台</b>的访谈与翻译合集做本地备份：柜上条目一旦失效，本馆仍可取阅。
-        所有人可读目录，<b>输入口令后即可在线阅览或下载</b>；口令由登录馆员签发、停用与吊销。
+        所有人可读目录，<b>输入口令后即可下载</b>；能否<b>在线预览</b>逐本由馆员勾选（默认关），
+        口令由登录馆员签发、停用与吊销。
       </p>
       <p class="micro-label">
         在架 {{ library.books.length }} 册 · 单次令牌
@@ -140,6 +159,56 @@ function fileIdList(event) {
       <p class="field-hint">连错若干次会按 IP 冷却；令牌只证明"此人已输入正确口令"，不改变书目可见性。</p>
     </section>
 
+    <section v-if="library.unlocked" class="pane" aria-label="站内检索">
+      <div class="pane-head">
+        <h2 class="pane-title">架上检索</h2>
+        <span class="micro-label">书名 · 著译者 · 章节标题</span>
+      </div>
+      <form class="row" @submit.prevent="runSearch">
+        <label class="field grow">
+          <span class="field-label">检索词</span>
+          <input
+            v-model.trim="term"
+            class="paper-input"
+            type="search"
+            maxlength="60"
+            placeholder="如：洛琪希 或 第 3 章"
+            aria-describedby="search-help"
+          />
+        </label>
+        <button class="paper-btn seal-press" type="submit" :disabled="library.searching || !term">
+          {{ library.searching ? '检索中' : '查' }}
+        </button>
+        <button
+          v-if="library.searchResult || library.searchError"
+          class="paper-btn btn-quiet"
+          type="button"
+          @click="term = ''; library.clearSearch()"
+        >
+          收起
+        </button>
+      </form>
+      <p id="search-help" class="field-hint">
+        只对<b>本口令覆盖到的在架书</b>检索，命中的是书名与包内章节标题，不含正文——正文检索会成倍放大抓取面。
+      </p>
+      <p v-if="library.searchError" class="field-error" role="alert">{{ library.searchError }}</p>
+      <ul v-if="library.searchResult" class="search-list">
+        <li v-for="(hit, index) in library.searchResult.items" :key="`${hit.bookId}-${hit.kind}-${index}`">
+          <router-link class="tagline" :to="hit.href">
+            <span class="search-kind">{{ hit.kind === 'chapter' ? '章' : '书' }}</span>
+            <span>{{ hit.title }}</span>
+            <span class="micro-label">{{ hit.bookTitle }}</span>
+          </router-link>
+        </li>
+        <li v-if="!library.searchResult.items.length" class="field-hint">架上没有匹配「{{ library.searchResult.query }}」的书名或章节。</li>
+      </ul>
+      <p v-if="library.searchResult?.items.length" class="micro-label">
+        命中 {{ library.searchResult.total }} 项 · 共查 {{ library.searchResult.searched }} 册
+        <template v-if="library.searchResult.truncated">（结果已达上限，请细化检索词）</template>
+        <template v-if="library.searchResult.skipped">· {{ library.searchResult.skipped }} 册未能解析（包体过大或已损坏）</template>
+      </p>
+    </section>
+
     <section class="pane" aria-label="在架书目">
       <div class="pane-head">
         <h2 class="pane-title">在架书目</h2>
@@ -166,7 +235,7 @@ function fileIdList(event) {
               <td class="rights">{{ item.rights || '未声明' }}</td>
               <td>
                 <router-link
-                  v-if="item.type === 'application/epub+zip'"
+                  v-if="item.previewable"
                   class="paper-btn btn-quiet"
                   :to="{ path: `/library/${item.id}/read`, query: { c: 0, p: 1 } }"
                   >在线阅览</router-link
@@ -232,6 +301,13 @@ function fileIdList(event) {
           <span class="field-label">权利声明</span>
           <textarea v-model="bookDraft.rights" class="paper-input" rows="2" maxlength="200" placeholder="如：译者公开发布且允许备份转载，已注明出处"></textarea>
         </label>
+        <label class="paper-check">
+          <input v-model="bookDraft.previewable" type="checkbox" />
+          <span>允许在线预览（EPUB / PDF）</span>
+        </label>
+        <p class="field-hint">
+          勾选前请确认你有权提供在线阅读：不勾选时架上仍能下载，但不会把包内正文与章节结构下发给浏览器。
+        </p>
         <p v-if="error" class="field-error" role="alert">{{ error }}</p>
         <button class="paper-btn seal-press" type="button" :disabled="busy || !bookDraft.file || !bookDraft.title" @click="registerBook">
           用印登记
@@ -245,15 +321,25 @@ function fileIdList(event) {
         </div>
         <div class="table-scroll">
           <table class="lic-table">
-            <thead><tr><th scope="col">书名</th><th scope="col">磁盘文件</th><th scope="col">校验</th><th scope="col">状态</th><th scope="col">操作</th></tr></thead>
+            <thead><tr><th scope="col">书名</th><th scope="col">磁盘文件</th><th scope="col">校验</th><th scope="col">状态</th><th scope="col">预览</th><th scope="col">操作</th></tr></thead>
             <tbody>
               <tr v-for="item in library.booksFull" :key="item.id">
                 <td>{{ item.title }}</td>
                 <td class="mono">{{ item.file || '—' }}</td>
                 <td class="mono">{{ item.sha256 ? item.sha256.slice(0, 12) : '—' }}</td>
                 <td>{{ item.enabled === false ? '已下架' : '在架' }}</td>
+                <td>{{ item.previewable === true ? '已入白名单' : '仅下载' }}</td>
                 <td class="row-actions">
                   <button class="paper-btn btn-quiet" type="button" @click="toggleBook(item)">{{ item.enabled === false ? '上架' : '下架' }}</button>
+                  <button
+                    class="paper-btn btn-quiet"
+                    type="button"
+                    :disabled="!previewKind(item.type)"
+                    :title="previewKind(item.type) ? '切换是否在线预览' : '该类型没有在线预览'"
+                    @click="togglePreview(item)"
+                  >
+                    {{ item.previewable === true ? '停预览' : '开预览' }}
+                  </button>
                   <button class="paper-btn btn-critical" type="button" @click="removal = item">取消登记</button>
                 </td>
               </tr>
@@ -410,5 +496,21 @@ function fileIdList(event) {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+.search-list {
+  list-style: none;
+  margin: 0 0 var(--space-2);
+  padding: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.search-list .tagline {
+  text-decoration: none;
+}
+.search-kind {
+  flex: none;
+  font-family: var(--font-display);
+  letter-spacing: 0.08em;
+  color: var(--terra-signal-ink);
 }
 </style>

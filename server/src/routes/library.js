@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { config } from '../config.js';
 import { grants, library, libraryKeys } from '../store/library.js';
 import { loadEpub, readerLimits, renderChapter, renderWhole, verifyImageBytes } from '../library/epubRead.js';
+import { loadPdf, pdfLimits, renderPdfChapter, renderPdfWhole } from '../library/pdfRead.js';
 import { readZipEntry } from '../library/zipRead.js';
 import { bumpAttempt, clearAttempt, waitMs } from '../security/attempts.js';
 import { requireAuth } from '../security/middleware.js';
@@ -27,6 +28,8 @@ const publicView = (item) => ({
   rights: item.rights,
   type: item.type,
   bytes: item.bytes,
+  // 预览白名单标记：前端据此决定"在线阅览"入口是否出现
+  previewable: item.previewable === true,
   createdAt: item.createdAt,
 });
 
@@ -87,7 +90,7 @@ libraryRouter.get('/library/files/:id', (req, res) => {
 
 /* —— 在线阅览：与下载同一口令门控，但只按章节出页 —— */
 
-/** 门控链：令牌有效 → 书在架 → 口令覆盖此书 → 是 EPUB → 文件在位 */
+/** 门控链：令牌有效 → 书在架 → 口令覆盖此书 → 在预览白名单内 → 类型受支持 → 文件在位 */
 async function readGate(req, res) {
   const key = grants.verify(req.query.k, req.query.exp, req.query.sig);
   if (!key) {
@@ -104,8 +107,15 @@ async function readGate(req, res) {
     res.status(403).json({ error: 'out-of-scope', message: '该口令不含此书' });
     return null;
   }
-  if (item.type !== 'application/epub+zip') {
-    res.status(409).json({ error: 'not-epub', message: '仅 EPUB 支持在线阅览，PDF 请下载后本地阅读' });
+  // 预览白名单：可下载不等于可预览，逐本由馆员勾选，默认关
+  if (item.previewable !== true) {
+    audit('library-preview-denied', { keyId: key.id, bookId: item.id }, req);
+    res.status(403).json({ error: 'preview-off', message: '此书未加入预览白名单，仅可下载' });
+    return null;
+  }
+  const kind = item.type === 'application/epub+zip' ? 'epub' : item.type === 'application/pdf' ? 'pdf' : null;
+  if (!kind) {
+    res.status(409).json({ error: 'type-unsupported', message: '该类型不支持在线阅览' });
     return null;
   }
   const file = library.pathOf(item);
@@ -114,7 +124,7 @@ async function readGate(req, res) {
     return null;
   }
   res.setHeader('Cache-Control', 'no-store');
-  return { key, item, file };
+  return { key, item, file, kind };
 }
 
 /** 正文里的图片要能被浏览器直接取，故把同一枚短时效令牌嵌进 src；站内跳链走 SPA 路由，不带令牌 */
@@ -138,9 +148,26 @@ libraryRouter.get('/library/:id/reader', async (req, res, next) => {
   const gate = await readGate(req, res);
   if (!gate) return;
   try {
+    if (gate.kind === 'pdf') {
+      const book = await loadPdf(gate.file);
+      res.json({
+        book: publicView(gate.item),
+        kind: 'pdf',
+        meta: { title: gate.item.title, pages: book.pageCount, splitBy: book.hasOutline ? 'outline' : 'pages' },
+        splitRequired: book.bytes > config.readSplitBytes,
+        limits: pdfLimits(),
+        chapters: book.chapters.map((chapter) => ({
+          index: chapter.index,
+          title: chapterTitle(chapter),
+          pages: chapter.to - chapter.from + 1,
+        })),
+      });
+      return;
+    }
     const book = await loadEpub(gate.file);
     res.json({
       book: publicView(gate.item),
+      kind: 'epub',
       meta: { title: book.title, language: book.language, entries: book.directoryEntries },
       splitRequired: book.bytes > config.readSplitBytes,
       limits: readerLimits(),
@@ -156,6 +183,20 @@ libraryRouter.get('/library/:id/reader/all', async (req, res, next) => {
   const gate = await readGate(req, res);
   if (!gate) return;
   try {
+    if (gate.kind === 'pdf') {
+      const book = await loadPdf(gate.file);
+      const whole = await renderPdfWhole(gate.file, book);
+      audit('library-read-all', { bookId: gate.item.id, kind: 'pdf', bytes: whole.bytes }, req);
+      res.json({
+        mode: 'whole',
+        kind: 'pdf',
+        splitRequired: book.bytes > config.readSplitBytes,
+        chapterCount: whole.chapterCount,
+        bytes: whole.bytes,
+        html: whole.html,
+      });
+      return;
+    }
     const book = await loadEpub(gate.file);
     const whole = await renderWhole(gate.file, book, readerCtx(req, gate.item));
     audit('library-read-all', { bookId: gate.item.id, bytes: whole.bytes }, req);
@@ -179,16 +220,20 @@ libraryRouter.get('/library/:id/reader/:index', async (req, res, next) => {
     return res.status(400).json({ error: 'bad-index', message: '章节序号无效' });
   }
   try {
-    const book = await loadEpub(gate.file);
+    const book = gate.kind === 'pdf' ? await loadPdf(gate.file) : await loadEpub(gate.file);
     if (index >= book.chapters.length) return res.status(404).json({ error: 'no-chapter', message: '没有该章节' });
     const ctx = readerCtx(req, gate.item);
-    const page = await renderChapter(gate.file, book, index, ctx);
+    const page =
+      gate.kind === 'pdf'
+        ? await renderPdfChapter(gate.file, book, index, ctx)
+        : await renderChapter(gate.file, book, index, ctx);
     const last = book.chapters.length - 1;
     const next = page.part < page.parts ? { c: index, p: page.part + 1 } : index < last ? { c: index + 1, p: 1 } : null;
     const prev = page.part > 1 ? { c: index, p: page.part - 1 } : index > 0 ? { c: index - 1, p: 1 } : null;
-    audit('library-read', { bookId: gate.item.id, chapter: index, part: page.part, bytes: page.bytes }, req);
+    audit('library-read', { bookId: gate.item.id, kind: gate.kind, chapter: index, part: page.part, bytes: page.bytes }, req);
     res.json({
       mode: 'chapter',
+      kind: gate.kind,
       ...page,
       chapterTitle: chapterTitle(book.chapters[index]),
       splitRequired: book.bytes > config.readSplitBytes,
@@ -199,9 +244,13 @@ libraryRouter.get('/library/:id/reader/:index', async (req, res, next) => {
   }
 });
 
+/** 包内插图只对 EPUB 有意义：PDF 的图像页不走这条门控（本站不做 PDF 光栅化） */
 libraryRouter.get('/library/:id/asset', async (req, res, next) => {
   const gate = await readGate(req, res);
   if (!gate) return;
+  if (gate.kind !== 'epub') {
+    return res.status(409).json({ error: 'asset-epub-only', message: '该类型没有包内插图可取' });
+  }
   try {
     const book = await loadEpub(gate.file);
     const name = String(req.query.p ?? '');
@@ -220,6 +269,81 @@ libraryRouter.get('/library/:id/asset', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
+});
+
+/* —— 站内检索：口令解锁后，对书目元数据与包内章节标题做检索 —— */
+
+/** 按空格分词后逐字段做子串匹配：中文不需要分词器也能命中，
+ *  而且刻意不建常驻索引——索引一旦不与"外部换文件"联动就会静默漏检（见 DEVELOPMENT B-10）。 */
+function termMatch(needles, ...fields) {
+  const hay = fields.map((f) => String(f ?? '').toLowerCase()).join(' ');
+  return needles.every((term) => hay.includes(term));
+}
+
+const SEARCH_MAX_HITS = 60;
+const SEARCH_MAX_BOOKS = 60;
+
+libraryRouter.get('/library/search', async (req, res, next) => {
+  const key = grants.verify(req.query.k, req.query.exp, req.query.sig);
+  if (!key) {
+    res.status(403).json({ error: 'grant-required', message: '口令令牌无效或已过期，请重新输入口令' });
+    return;
+  }
+  const term = String(req.query.q ?? '').trim().slice(0, 60);
+  if (term.length < 1) {
+    res.status(400).json({ error: 'bad-query', message: '检索词不可为空' });
+    return;
+  }
+  const needles = term.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!needles.length) {
+    res.status(400).json({ error: 'bad-query', message: '检索词不可为空' });
+    return;
+  }
+
+  const scope = library.enabled().filter((item) => libraryKeys.covers(key, item.id));
+  const hits = [];
+  let skipped = 0;
+  for (const item of scope.slice(0, SEARCH_MAX_BOOKS)) {
+    if (termMatch(needles, item.title, item.author, item.translator, item.group, item.note, item.rights)) {
+      hits.push({ kind: 'book', bookId: item.id, bookTitle: item.title, title: item.title, href: `/library/${item.id}/read` });
+    }
+    // 章节标题要打开包才拿得到；未进预览白名单的书只给书目级命中，不外泄包内结构
+    if (item.type !== 'application/epub+zip' && item.type !== 'application/pdf') continue;
+    if (item.previewable !== true) continue;
+    const file = library.pathOf(item);
+    if (!file) continue;
+    try {
+      const book = item.type === 'application/pdf' ? await loadPdf(file) : await loadEpub(file);
+      for (const chapter of book.chapters) {
+        if (hits.length >= SEARCH_MAX_HITS) break;
+        if (termMatch(needles, chapter.title)) {
+          hits.push({
+            kind: 'chapter',
+            bookId: item.id,
+            bookTitle: item.title,
+            chapterIndex: chapter.index,
+            title: chapter.title || `第 ${chapter.index + 1} 节`,
+            href: `/library/${item.id}/read?c=${chapter.index}`,
+          });
+        }
+      }
+    } catch {
+      // 单本解析失败（包坏、超限）不得拖垮整次检索
+      skipped += 1;
+    }
+    if (hits.length >= SEARCH_MAX_HITS) break;
+  }
+
+  res.setHeader('Cache-Control', 'no-store');
+  audit('library-search', { keyId: key.id, term: term.slice(0, 24), termLength: term.length, hits: hits.length, skipped }, req);
+  res.json({
+    query: term,
+    items: hits,
+    total: hits.length,
+    searched: Math.min(scope.length, SEARCH_MAX_BOOKS),
+    truncated: scope.length > SEARCH_MAX_BOOKS || hits.length >= SEARCH_MAX_HITS,
+    skipped,
+  });
 });
 
 /* —— 以下为登录用户管理面 —— */

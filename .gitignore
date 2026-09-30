@@ -9,6 +9,8 @@ server/data/
 # 会话内的一次性取证、走查与备份产物（备份里含 users.csv，绝不入库）
 .scratch-*/
 outputs/
+# 验收脚本每轮落盘的报告（含实测值与时间戳，是运行态不是源码，与打包时的排除口径一致）
+verify-report-*.md
 .qoder-credits/
 .env
 .env.local

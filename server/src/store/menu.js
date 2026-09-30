@@ -12,6 +12,8 @@ export const DEFAULT_MENU = [
   { moduleId: 'reorder', visible: true },
   { moduleId: 'menu-editor', visible: true },
   { moduleId: 'users', visible: true },
+  { moduleId: 'ops', visible: true },
+  { moduleId: 'ledger', visible: true },
   { moduleId: 'about', visible: true },
 ];
 

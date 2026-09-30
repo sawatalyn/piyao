@@ -10,6 +10,8 @@
    例外见 §1.1：富文本基底 CKEditor 5 免费版按用户明确要求引入，其 copyleft 义务已单独核实并在页脚与 README 中声明。
 3. **许可声明缺失（`NONE` / `NOASSERTION`）的项目按"不允许取码"处理**，至多参照信息架构层面的通用做法。
 4. 任何项目的**美术资源、标识、商标、字体文件、CDN 素材**一律不复制、不打包。
+5. **选型先找现成开源，再考虑自研**；采纳与否都要留下"许可实测值 + 为什么"，见 §2.4 与 `DEVELOPMENT.md` §三 3.4。
+   已采纳的包全部**精确 pin**，并由 `scripts/pin-guard.mjs` 在构建前核对版本、许可与登记是否仍然一致。
 
 ---
 
@@ -30,7 +32,17 @@
 | sanitize-html | 2.17.7 | MIT | 后端 | 富文本白名单净化 |
 | cookie-parser | 1.4.7 | MIT | 后端 | 会话 Cookie 解析 |
 | minisearch | 7.2.0 | MIT | 后端 | 常驻内存检索索引（BM25+） |
+| pdfjs-dist | 6.3.289 | Apache-2.0 | 后端 | PDF 在线阅览（书签分节 + 文字层，不做服务端光栅化） |
+| diff（jsdiff） | 9.0.0 | BSD-3-Clause | 后端 | 档案版本比对的词/字级差异（`diffWords` + `maxEditLength` 熔断） |
+| @rgrove/parse-xml | 5.0.0 | ISC | 后端 | EPUB 的 container/OPF/nav/NCX 严格解析（**零传递依赖**） |
+| csv-parse | 7.0.3 | MIT | 后端 | 用户名册 CSV 读取（引号、内嵌换行、CRLF） |
+| csv-stringify | 6.9.0 | MIT | 后端 | 用户名册 CSV 写出 |
 | ckeditor5 | 48.5.2 | **GPL-2.0-or-later**（双许可，取免费档） | 前端 | 富文本编辑基底，见 §1.1 |
+
+> **全部直接依赖已精确 pin**（`package.json` 里不出现 `^`/`~`/范围符），并由 `scripts/pin-guard.mjs` 在
+> `pnpm build` 前逐条核对：声明=实装、许可落在宽松白名单（两个已单独核实的例外：CKEditor 的 GPL、DOMPurify 的
+> MPL-2.0 **或** Apache-2.0 双许可）、每个包有"一句话用途"与可回指出处、同一包不在两个工作区各装一份。
+> 目标机部署请用 `pnpm install --frozen-lockfile`。
 
 ### 1.1 富文本基底：CKEditor 5（copyleft 例外的核实记录）
 
@@ -80,7 +92,45 @@
 | `AFP-Medialab/verification-plugin` | MIT | 核查类站点的"声明—证据—结论"信息层级与措辞（结论分级、来源平台、抓取存证时刻、多机构判定） | 其形态是记者工作台插件，与本站档案库定位不同；仅把分级与出处字段落到 `verdict.rating` 与 `rumor.source` |
 | `typemill/typemill` | MIT | 防暴力破解（按用户名维度计数并持久化）、统一失败文案 + 固定延迟防枚举/计时、数据目录 `.htaccess` 保护、上传二次嗅探与重命名 | PHP 栈与本站不同，不取代码；据此补齐了本站缺失的按用户名锁定 + 持久化、审计日志与显式 CSP |
 
-### 2.3 明确排除（许可不允许取码，或许可未声明）
+### 2.4 选型回头补账：按"先找现成开源"新增的引入与核实后排除
+
+原则（用户指定）：**选型时先找开源、符合需求、可二次开发的仓库，再考虑自主开发**；许可一律落到
+**包自带的 LICENSE / `package.json` 实测**（不看 README 的口头声明，不看搜索摘要）。
+下表许可列写的是本次实测取到的值，registry / GitHub API 的原始响应留档在项目内 `.scratch-oss-select-a7x2/`
+（`n-*.latest.json`、`gh-*.json`、`m-*.json`），可逐条回指。
+
+**因此新增的引入**（同时替换掉了原先的自研实现，逐条理由见 `DEVELOPMENT.md` §三 3.4）：
+
+| 包 | 版本 | 许可（实测） | 替掉的自研 | 换的过程中发现的真实缺陷 |
+| --- | --- | --- | --- | --- |
+| `diff` | 9.0.0 | BSD-3-Clause | 整段对比 | —— |
+| `@rgrove/parse-xml` | 5.0.0 | ISC | 正则"解析" EPUB 的 XML | 目录次序与父级标题静默丢失、坏 XML 静默变空页（改为严格解析后可诊断，返回 422 并指明是哪一个文件） |
+| `csv-parse` / `csv-stringify` | 7.0.3 / 6.9.0 | MIT | 自写 `parseCsvLine` + 转义 | **口令里含 `\n` 会在 `users.csv` 里造出一条谁都没登记的"幽灵身份行"**（写侧还需 `quoted_match: /[",\r\n]/`，因为 CRLF 分隔下裸 `\n` 不会被自动加引号） |
+| `pdfjs-dist` | 6.3.289 | Apache-2.0 | ——（PDF 无从自研） | v6 移除了 `PDFDocumentProxy.destroy()`，须改用 `loadingTask.destroy()`（否则每个 PDF 请求 422） |
+
+**核实后明确不引入**（保留自研，附理由）：
+
+| 候选 | 许可（实测） | 不引入的理由 |
+| --- | --- | --- |
+| `pino` + `pino-roll` | MIT / MIT | 本站日志是封顶 512KB、轮 5 份的 JSONL，聚合口径固定；引日志栈要改写全部审计写点而收益为负。`audit()` 的事件名与字段是稳定契约，将来外接采集器不动业务代码 |
+| `grafana/loki`、`grafana/grafana`、`grafana/tempo` | **AGPL-3.0**（GitHub API 实测） | 强 copyleft 服务端许可，触发面超出本站承受范围 |
+| `vectordotdev/vector` | **MPL-2.0**（GitHub API 实测） | 文件级 copyleft，属需单独批准的一类；且它是独立进程，不解决"页内看台账" |
+| `Graylog2/graylog2-server` | **NOASSERTION**（GitHub API 实测，即自定义许可） | 按本台账判定原则第 3 条：许可未明确即不允许取码 |
+| `fast-xml-parser` | MIT（另有 6 个传递依赖，逐个查过均 MIT） | 许可合规但语义不符：对象映射丢**节点次序**（NCX 文档序即目录序），也无法回答"是哪一份 XML 坏了" |
+| `yauzl` / `fflate` / `adm-zip` / `jszip` | MIT / MIT / MIT / `(MIT OR GPL-3.0-or-later)` | 本站要的是"只取一个条目 + 自己握三道闸（条目名越界、解压长度上限、下发前按魔数复核）"；现成库要么是全量解压 API，要么仍需在其上再写这层校验 |
+| `steno` / `lowdb` | MIT / MIT | 原子写与现有实现等价；"带外改文件也要失效缓存"这件事现成库给不了（靠数据代次实现） |
+| `express-brute` | 包声明为 `BSD`（未细化条款） | 需求要求锁定计数**落盘、重启不清零**，其默认存储模型不符；许可声明笼统也增加核实成本 |
+| `file-type` | MIT | ESM-only、内含数十种格式表；且嗅探结果不能替代白名单（判为 SVG 的仍不能下发，可携带脚本） |
+| `jsondiffpatch` | MIT | 输出面向"程序回放"的结构 delta；版本比对要的是人可读的逐词 `<ins>/<del>` |
+| `isbot` | `Unlicense`（公有领域） | 语义与需求相反：它把空 UA/已知爬虫特征判为 bot 供调用方**放行或降级**，本站要"无会话即拒"，且不能被无头浏览器误伤 |
+| `pngjs` / `pdfkit` | MIT / MIT | 候选均合规但未引入：演示件只需"一小片形状固定的字节"，`pdfkit` 会把一个 PDF **生成器**带进生产依赖面，而本站对 PDF 只读不写 |
+
+**镜像站的内容来源边界**（与许可无关，但一并记在这里免得日后误读）：
+镜像只伺服馆员自行放入 `server/data/library/` 的文件；本项目**不代抓网盘、不下载小说/EPUB/翻译稿/漫画扫描等
+受版权保护作品、不绕过百度网盘与任何登录门槛**；三本演示册（占位 EPUB、五章 EPUB、带书签 PDF）全部由
+`server/scripts/` 下的自写生成器现场产出。在线阅览另受**逐本勾选的预览白名单**约束：登记在册不等于可公开渲染正文。
+
+### 2.5 此前一轮的明确排除（许可不允许取码，或许可未声明）
 
 | 仓库 | 声明许可 | 处置 |
 | --- | --- | --- |
@@ -101,6 +151,10 @@
   **不加载任何第三方字体文件**，因此不产生字体许可义务。若日后改为随包分发 Noto 系列，须随附其 SIL Open Font License 1.1 文本。
 - **图标**：全部为本次手写的内联 SVG（放大镜、界尺把手、折角、版框标识等），未引入图标库，未使用任何官方阵营徽记。
 - **图片**：演示图片由 `server/scripts/png.js` 的最小 PNG 编码器现场生成，无外部素材来源。
+- **演示 PDF**：由 `server/scripts/pdf.js` 的裸对象写入器现场生成（含三枚书签与一块不可压缩填充），
+  用于验"按节翻页 + 文字层 + 体积阈值"，同样无外部素材来源。
+- **演示 EPUB**：由 `server/scripts/epub.js` 生成（含 store 与 deflate 两种条目、跨章锚点、必须被净化掉的样本标记），
+  三本演示册全部自产，本站不抓取、不收录任何受版权保护的作品。
 
 ## 四、归属与免责表述
 

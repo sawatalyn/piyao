@@ -61,6 +61,8 @@ export const useLibraryStore = defineStore('library', () => {
       writeGrant(null);
       reader.value = null;
       page.value = null;
+      searchResult.value = null;
+      searchError.value = '口令已失效，请重新输入后再检索';
     }
   }
 
@@ -115,6 +117,42 @@ export const useLibraryStore = defineStore('library', () => {
     reader.value = null;
     page.value = null;
     readError.value = '';
+  }
+
+  /* —— 站内检索：口令解锁后才可用，命中项直连到某一章 —— */
+  const searchResult = ref(null);
+  const searching = ref(false);
+  const searchError = ref('');
+
+  async function search(term) {
+    const q = String(term || '').trim();
+    if (!q) {
+      searchResult.value = null;
+      searchError.value = '';
+      return null;
+    }
+    if (!unlocked.value) {
+      searchError.value = '请先输入口令再检索';
+      return null;
+    }
+    searching.value = true;
+    searchError.value = '';
+    try {
+      searchResult.value = await api.get(`/api/library/search?q=${encodeURIComponent(q)}&${tokenQuery()}`);
+      return searchResult.value;
+    } catch (err) {
+      dropGrantIfStale(err);
+      searchResult.value = null;
+      searchError.value = describeError(err);
+      return null;
+    } finally {
+      searching.value = false;
+    }
+  }
+
+  function clearSearch() {
+    searchResult.value = null;
+    searchError.value = '';
   }
 
   async function load() {
@@ -185,7 +223,7 @@ export const useLibraryStore = defineStore('library', () => {
 
   async function updateBook(id, payload) {
     await api.put(`/api/library/files/${encodeURIComponent(id)}`, payload);
-    await load();
+    await Promise.all([load(), loadManaged()]);
     ui.notify('书目信息已更新', 'commit');
   }
 
@@ -209,6 +247,9 @@ export const useLibraryStore = defineStore('library', () => {
     page,
     reading,
     readError,
+    searchResult,
+    searching,
+    searchError,
     load,
     unlock,
     downloadUrl,
@@ -216,6 +257,8 @@ export const useLibraryStore = defineStore('library', () => {
     openPage,
     openWhole,
     closeReader,
+    search,
+    clearSearch,
     loadManaged,
     addKey,
     patchKey,

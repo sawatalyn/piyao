@@ -672,6 +672,73 @@ async function main() {
   );
   await shot('09-created-detail');
 
+  // —— 版本台账（#32）：UI 里修订一次就该有两版，比对页要指出改了哪 ——
+  const revLink = await evaluate(`document.querySelector('.decision a[href$="/revisions"]')?.getAttribute('href') || ''`);
+  check('详情页对所有人给出"版本与比对"入口', revLink === `/post/${createdId}/revisions`, revLink);
+
+  await cdp.send('Page.navigate', { url: `${SITE}/edit/${createdId}` });
+  await waitFor('document.querySelectorAll(".leaf").length === 4 && document.querySelectorAll(".ck-editor").length === 2', 12000, '编辑器载入既有档案');
+  await evaluate(`(() => {
+    const input = document.querySelector('input[type=text]');
+    const set = Object.getOwnPropertyDescriptor(input.constructor.prototype, 'value').set;
+    set.call(input, ${JSON.stringify(NEW_TITLE + '（已修订）')});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await revealLeaf(2);
+  await typeIntoEditor(1, '复核追加：样本已复检。');
+  await sleep(400);
+  await evaluate(`document.querySelector('form.pane button[type=submit]').click(), true`);
+  await waitFor('document.querySelector(".paper-dialog[open]")', 6000, '修订确认框');
+  await evaluate(`document.querySelector('.paper-dialog[open] footer button:last-child').click(), true`);
+  await waitFor('location.pathname.startsWith("/post/")', 12000, '修订后回详情');
+  await sleep(700);
+
+  await cdp.send('Page.navigate', { url: `${SITE}/post/${createdId}/revisions` });
+  const revRows = await waitFor(
+    `document.querySelectorAll('.pane[aria-label="版本清单"] tbody tr').length === 2`,
+    12000,
+    '两版清单'
+  );
+  const revUi = JSON.parse(await evaluate(`JSON.stringify({
+    versions: [...document.querySelectorAll('.pane[aria-label="版本清单"] tbody tr td:nth-child(1)')].map((td) => td.textContent.trim()).join('/'),
+    kinds: [...document.querySelectorAll('.pane[aria-label="版本清单"] tbody tr td:nth-child(2)')].map((td) => td.textContent.trim()).join('/'),
+    by: [...document.querySelectorAll('.pane[aria-label="版本清单"] tbody tr td:nth-child(4)')].map((td) => td.textContent.trim()).join('/'),
+    chars: [...document.querySelectorAll('.pane[aria-label="版本清单"] tbody tr td:nth-child(6)')].map((td) => td.textContent.trim()).join(' / '),
+    fields: [...document.querySelectorAll('.pane[aria-label="两版比对"] .diff-item h3')].map((h) => h.textContent.trim()),
+    delText: [...document.querySelectorAll('.pane[aria-label="两版比对"] .diff-old del')].map((d) => d.textContent).join(''),
+    addText: [...document.querySelectorAll('.pane[aria-label="两版比对"] .diff-new ins')].map((i) => i.textContent).join(''),
+    oldTitle: [...document.querySelectorAll('.pane[aria-label="两版比对"] .diff-item')].filter((li) => li.querySelector('h3')?.textContent.trim() === '标题')[0]?.querySelector('.diff-old')?.textContent?.trim() || '',
+    newTitle: [...document.querySelectorAll('.pane[aria-label="两版比对"] .diff-item')].filter((li) => li.querySelector('h3')?.textContent.trim() === '标题')[0]?.querySelector('.diff-new')?.textContent?.trim() || '',
+    pairNote: [...document.querySelectorAll('.pane[aria-label="两版比对"] .micro-label')].map((n) => n.textContent.trim()).join(' '),
+  })`));
+  check(
+    'UI 修订一次即累积两版（清单最新在前）',
+    revRows === true && revUi.kinds === '修订/建档' && revUi.versions === 'v2/v1',
+    `${revRows} 行 · ${revUi.versions} · ${revUi.kinds}`
+  );
+  check('版本清单带修订者与正文字数', /admin|档案管理员/.test(revUi.by) && /谣 \d+ \/ 辟 \d+/.test(revUi.chars), `${revUi.by} · ${revUi.chars}`);
+  check('比对页默认展示最近两版的差异字段', revUi.fields.includes('标题') && revUi.fields.includes('辟谣正文'), revUi.fields.join(','));
+  check('非词级字段直接给出新旧值（标题改动的双向可见）', revUi.newTitle.includes('（已修订）') && revUi.oldTitle === NEW_TITLE, `${revUi.oldTitle} → ${revUi.newTitle}`);
+  check('词级差异在页面上真的标出增与删', /复核追加/.test(revUi.addText) && revUi.delText.length > 0, `删=${revUi.delText.slice(0, 18)} 增=${revUi.addText.slice(0, 24)}`);
+  check('比对页说明版本对与各自时刻', /v1（.*→ v2（/.test(revUi.pairNote), revUi.pairNote.slice(0, 70));
+  const samePick = await evaluate(`(() => {
+    const rows = [...document.querySelectorAll('.pane[aria-label="版本清单"] tbody tr')];
+    const btn = [...rows[0].querySelectorAll('button')].find((b) => /设为基线/.test(b.textContent));
+    btn.click();
+    return true;
+  })()`);
+  const sameHint = await waitFor(
+    `(() => {
+      const p = [...document.querySelectorAll('.pane[aria-label="两版比对"] .field-error')];
+      return p.some((n) => /同一版/.test(n.textContent));
+    })()`,
+    8000,
+    '同版提示'
+  );
+  check('选成同一版时给出可读提示而不是空表', sameHint === true, String(sameHint));
+  await shot('09b-revisions-diff');
+
   await cdp.send('Page.navigate', { url: `${SITE}/` });
   await waitFor('document.querySelectorAll(".post-card").length > 0');
   const appears = await evaluate(`[...document.querySelectorAll('.card-title')].some(el => el.textContent.includes('走查建档'))`);
@@ -746,15 +813,18 @@ async function main() {
       rows: sec ? sec.querySelectorAll('.matrix tbody tr').length : 0,
       hasLink: /example\\.org/.test(sec?.textContent || ''),
       hasUser: /示例馆员/.test(sec?.textContent || ''),
-      hasEpub: /EPUB 在线阅览/.test(sec?.textContent || ''),
+      hasEpub: /EPUB \\/ PDF/.test(sec?.textContent || '') && /预览白名单/.test(sec?.textContent || ''),
+      hasRev: /版本台账/.test(sec?.textContent || '') && /逐版快照/.test(sec?.textContent || ''),
+      hasOps: /馆务台账/.test(sec?.textContent || '') && /孤儿/.test(sec?.textContent || ''),
+      hasMenu12: /出厂 12 项功能菜单/.test(sec?.textContent || ''),
       leaksPwd: /demo-pass|roxy-guest/.test(sec?.textContent || ''),
     })
   })()`);
   const ex = JSON.parse(samplePane);
   check(
-    '凡例页列出出厂示例且逐条给出编辑/删除入口',
-    ex.rows >= 6 && ex.hasLink && ex.hasUser && ex.hasEpub,
-    `${ex.rows} 行`
+    '凡例页列出出厂示例且逐条给出编辑/删除入口（含版本台账与馆务台账）',
+    ex.rows >= 8 && ex.hasLink && ex.hasUser && ex.hasEpub && ex.hasRev && ex.hasOps && ex.hasMenu12,
+    `${ex.rows} 行 / 版本 ${ex.hasRev} / 馆务 ${ex.hasOps} / 菜单 ${ex.hasMenu12}`
   );
   check('示例清单不展示任何口令值', ex.leaksPwd === false);
 
@@ -954,6 +1024,21 @@ async function main() {
   const lp = JSON.parse(libPage);
   check('镜像页对在架书目逐项列出且取书受口令门控', lp.rows > 0 && lp.gated === lp.rows, `${lp.rows} 册 / ${lp.gated} 个禁用按钮`);
   check('馆员视图可见磁盘文件名与口令明文', /\.epub$/.test(lp.fileCell) && lp.codeVisible === true, lp.fileCell);
+  const previewShape = await evaluate(`JSON.stringify({
+    readLinks: [...document.querySelectorAll('.pane[aria-label="在架书目"] a[href*="/read"]')].length,
+    downloadOnly: [...document.querySelectorAll('.pane[aria-label="在架书目"] tbody tr')].filter((tr) => /仅可下载/.test(tr.textContent)).length,
+    rows: document.querySelectorAll('.pane[aria-label="在架书目"] tbody tr').length,
+    previewBtns: [...document.querySelectorAll('.pane[aria-label="书目管理"] button')].filter((b) => /预览/.test(b.textContent)).length,
+    previewOff: [...document.querySelectorAll('.pane[aria-label="书目管理"] tbody tr')].filter((tr) => /仅下载/.test(tr.textContent)).length,
+    registerHasCheck: Boolean(document.querySelector('.pane[aria-label="登记本地文件"] input[type=checkbox]')),
+  })`);
+  const psv = JSON.parse(previewShape);
+  check(
+    '「在线阅览」入口只给进了预览白名单的书，未勾选的显示"仅可下载"',
+    psv.rows === 3 && psv.readLinks === 2 && psv.downloadOnly === 1,
+    `${psv.rows} 册 / ${psv.readLinks} 个阅览入口 / ${psv.downloadOnly} 册仅可下载`
+  );
+  check('书目管理带预览开关，登记表单带"允许在线预览"勾选', psv.previewBtns === 3 && psv.previewOff === 1 && psv.registerHasCheck === true, `${psv.previewBtns} 个开关 / ${psv.previewOff} 册未入白名单`);
 
   // 解锁后取书链接应真的能取到文件
   await evaluate(`(() => {
@@ -973,6 +1058,73 @@ async function main() {
   })()`);
   const dc = JSON.parse(dlCheck);
   check('输入口令后可直接取到 EPUB 文件', dc.status === 200 && dc.bytes > 1000 && dc.type === 'application/epub+zip', `${dc.status} · ${dc.bytes}B · ${dc.type}`);
+
+  // —— 架上检索：表单提交 → 章节级命中 → 直达该节 → 收起 ——
+  await evaluate(`(() => {
+    const pane = document.querySelector('.pane[aria-label="站内检索"]');
+    const input = pane.querySelector('input[type=search]');
+    const set = Object.getOwnPropertyDescriptor(input.constructor.prototype, 'value').set;
+    set.call(input, '结论判定');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return true;
+  })()`);
+  await evaluate(`document.querySelector('.pane[aria-label="站内检索"] button[type=submit]').click(), true`);
+  const searched = await waitFor(
+    `document.querySelectorAll('.pane[aria-label="站内检索"] .search-list a').length > 0`,
+    8000,
+    '检索结果出现'
+  );
+  const hitShape = JSON.parse(await evaluate(`JSON.stringify({
+    rows: document.querySelectorAll('.pane[aria-label="站内检索"] .search-list a').length,
+    chapterHit: [...document.querySelectorAll('.pane[aria-label="站内检索"] .search-list a')].some((a) => /第三章 · 结论判定/.test(a.textContent)),
+    href: [...document.querySelectorAll('.pane[aria-label="站内检索"] .search-list a')].map((a) => a.getAttribute('href')).join(','),
+    note: [...document.querySelectorAll('.pane[aria-label="站内检索"] .micro-label')].map((n) => n.textContent).join(' '),
+  })`));
+  check(
+    '解锁后出现检索面板，按 PDF 书签标题可命中章节级结果',
+    searched === true && hitShape.rows > 0 && hitShape.chapterHit === true,
+    `${hitShape.rows} 行 / ${hitShape.note.slice(0, 24)}`
+  );
+  check('章节级命中直连该书对应节', /\/library\/bseed3\/read\?c=2/.test(hitShape.href), hitShape.href.slice(0, 60));
+  await evaluate(`[...document.querySelectorAll('.pane[aria-label="站内检索"] button')].find((b) => /收起/.test(b.textContent)).click(), true`);
+  const collapsed = await waitFor(`!document.querySelector('.pane[aria-label="站内检索"] .search-list')`, 6000, '检索结果收起');
+  check('检索结果可收起', collapsed === true);
+
+  // —— 预览开关：关掉再开，架上入口须即刻跟着变 ——
+  await evaluate(`(() => {
+    const row = [...document.querySelectorAll('.pane[aria-label="书目管理"] tbody tr')].find((tr) => /PDF 阅览演示册/.test(tr.textContent));
+    [...row.querySelectorAll('button')].find((b) => /停预览/.test(b.textContent)).click();
+    return true;
+  })()`);
+  const offNow = await waitFor(
+    `(() => {
+      const rows = [...document.querySelectorAll('.pane[aria-label="在架书目"] tbody tr')];
+      const target = rows.find((tr) => /PDF 阅览演示册/.test(tr.textContent));
+      return /仅可下载/.test(target?.textContent || '') && document.querySelectorAll('.pane[aria-label="在架书目"] a[href*="/read"]').length === 1;
+    })()`,
+    8000,
+    '关掉预览后阅览入口消失'
+  );
+  check('馆员关掉预览后，架上阅览入口即刻消失', offNow === true);
+  const offRowState = JSON.parse(await evaluate(`JSON.stringify({
+    previewCell: [...document.querySelectorAll('.pane[aria-label="书目管理"] tbody tr')].find((tr) => /PDF 阅览演示册/.test(tr.textContent))?.textContent || '',
+  })`));
+  check('管理面同步显示"仅下载"（行状态与架上入口一起刷新）', /仅下载/.test(offRowState.previewCell), offRowState.previewCell.slice(0, 48));
+  await evaluate(`(() => {
+    const row = [...document.querySelectorAll('.pane[aria-label="书目管理"] tbody tr')].find((tr) => /PDF 阅览演示册/.test(tr.textContent));
+    [...row.querySelectorAll('button')].find((b) => /开预览/.test(b.textContent)).click();
+    return true;
+  })()`);
+  const onNow = await waitFor(
+    `(() => {
+      const rows = [...document.querySelectorAll('.pane[aria-label="书目管理"] tbody tr')];
+      return document.querySelectorAll('.pane[aria-label="在架书目"] a[href*="/read"]').length === 2
+        && /已入白名单/.test(rows.find((tr) => /PDF 阅览演示册/.test(tr.textContent))?.textContent || '');
+    })()`,
+    8000,
+    '恢复预览'
+  );
+  check('重新勾选后阅览入口与行状态一起恢复', onNow === true);
 
   // 口令管理：签发 → 停用 → 吊销（自清理，不留测试口令）
   const keyCountBefore = lp.keyRows;
@@ -1078,6 +1230,289 @@ async function main() {
   check('令牌收回后阅览页要求口令，输对即开卷', reGated === true);
   await shot('11-reader-pages');
 
+  // ---------- 17c. PDF 阅览：书签成节、页号入目录、逐节翻页与整本被拒边界 ----------
+  await cdp.send('Page.navigate', { url: `${SITE}/library/bseed3/read?c=0&p=1` });
+  await waitFor('document.querySelector(".reading-sheet .epub-body .pdf-page")', 15000, 'PDF 阅览页正文');
+  const p1 = JSON.parse(await evaluate(`(() => {
+    const body = document.querySelector('.reading-sheet .epub-body');
+    return JSON.stringify({
+      toc: document.querySelectorAll('.toc .toc-link').length,
+      pages: [...document.querySelectorAll('.toc .toc-pages')].map((n) => n.textContent.trim()).join('/'),
+      title: document.querySelector('.reading-title')?.textContent?.trim() || '',
+      unit: document.querySelector('.reading-head .micro-label')?.textContent?.trim() || '',
+      pageSections: body?.querySelectorAll('.pdf-page').length || 0,
+      firstLine: (body?.textContent || '').trim().slice(0, 32),
+      dirty: /<script|style=|<svg/i.test(body?.innerHTML || ''),
+      raster: body?.querySelectorAll('canvas, img').length || 0,
+    });
+  })()`));
+  check('PDF 目录取自书签、每节带页数', p1.toc === 3 && p1.pages === '2 页/2 页/1 页', `${p1.toc} 节 · ${p1.pages}`);
+  check('PDF 节名成为阅读页标题', p1.title === '第一章 · 谣言样本', p1.title);
+  check('PDF 页眉按"节/页"而非"章/小节"表述', /节/.test(p1.unit) && !/小节/.test(p1.unit), p1.unit);
+  check('PDF 正文按物理页成段', p1.pageSections === 2, `${p1.pageSections} 个页容器`);
+  check('PDF 文字层原样可读', /Rumor sample/.test(p1.firstLine), p1.firstLine);
+  check('PDF 阅览页不含脚本 / 行内样式 / svg', p1.dirty === false);
+  check('不做服务端光栅化（页内无 canvas 与位图）', p1.raster === 0, `${p1.raster} 个像素载体`);
+  await evaluate(`[...document.querySelectorAll('.page-nav button')].find(b => /下一页/.test(b.textContent)).click(), true`);
+  await waitFor(`location.search.includes('c=1')`, 8000, 'PDF 翻页同步地址栏');
+  const p2title = await waitFor(
+    `document.querySelector('.reading-title')?.textContent?.trim().startsWith('第二章') === true`,
+    8000,
+    'PDF 第二章正文载入'
+  );
+  const p2 = await evaluate(`document.querySelector('.reading-title')?.textContent?.trim() || ''`);
+  check('PDF 下一页换到第二章', p2title === true && p2 === '第二章 · 证据与推理', p2);
+  await evaluate(`[...document.querySelectorAll('.toc-mode button')].find(b => /全本通读/.test(b.textContent)).click(), true`);
+  const pdfWholeNow = await waitFor(
+    `(() => {
+      const body = document.querySelector('.reading-sheet .epub-body');
+      return body?.querySelectorAll('#ch0, #ch1, #ch2').length === 3 && body?.querySelectorAll('.pdf-page').length === 5;
+    })()`,
+    15000,
+    'PDF 全本渲染'
+  );
+  check('小 PDF 可全本通读且逐节有标题', pdfWholeNow === true, '三节合为一页、节名可定位');
+  await evaluate(`[...document.querySelectorAll('.toc-mode button')].find(b => /回到分页/.test(b.textContent)).click(), true`);
+  await waitFor(`location.search.includes('c=0')`, 8000, '回到分页');
+
+  // 未入白名单的书：阅览页必须给出明确说法，而不是空白或假装有正文
+  await cdp.send('Page.navigate', { url: `${SITE}/library/bseed1/read?c=0&p=1` });
+  const offShown = await waitFor(
+    `(() => {
+      const el = document.querySelector('.field-error[role=alert]');
+      return el ? /预览白名单/.test(el.textContent) : false;
+    })()`,
+    12000,
+    '预览白名单提示'
+  );
+  const offShape = JSON.parse(await evaluate(`JSON.stringify({
+    text: document.querySelector('.field-error[role=alert]')?.textContent?.trim() || '',
+    hasBody: Boolean(document.querySelector('.page-host')),
+    hasToc: Boolean(document.querySelector('.toc')),
+  })`));
+  check(
+    '未入预览白名单的书给出明确提示，且不渲染正文壳层',
+    offShown === true && /仅可下载/.test(offShape.text) && offShape.hasBody === false && offShape.hasToc === false,
+    `${offShape.text} / 正文壳=${offShape.hasBody} 目录=${offShape.hasToc}`
+  );
+
+  // ---------- 馆务台账（/ops）：对账读数、预演不改盘、确认框可取消、日志可筛 ----------
+  await cdp.send('Page.navigate', { url: `${SITE}/ops` });
+  const opsReady = await waitFor(
+    `document.querySelectorAll('.pane[aria-label="媒体台账"] .ledger .cell').length === 5`,
+    12000,
+    '媒体台账读数'
+  );
+  const opsShape = JSON.parse(await evaluate(`JSON.stringify({
+    head: document.querySelector('.pane[aria-label="媒体台账"] .micro-label')?.textContent?.trim() || '',
+    cells: [...document.querySelectorAll('.pane[aria-label="媒体台账"] .ledger .cell')].map((c) => c.textContent.replace(/\\s+/g, ' ').trim()),
+    subs: [...document.querySelectorAll('.pane[aria-label="媒体台账"] .sub')].map((h) => h.textContent.trim()),
+    picks: document.querySelectorAll('.pane[aria-label="媒体台账"] .pick-list input[type=checkbox]').length,
+    disabledPicks: document.querySelectorAll('.pane[aria-label="媒体台账"] .pick-list input[type=checkbox]:disabled').length,
+    buttons: [...document.querySelectorAll('.pane[aria-label="媒体台账"] button')].map((b) => b.textContent.trim()),
+    deadLinkHint: /死链只能重传修复/.test(document.querySelector('.pane[aria-label="媒体台账"]')?.textContent || ''),
+    logRows: document.querySelectorAll('.pane[aria-label="安全日志"] table tbody tr').length,
+    events: [...document.querySelectorAll('.pane[aria-label="安全日志"] select option')].length,
+  })`));
+  check('馆务台账给出磁盘/索引/可回收三类合计与四分栏', opsReady === true && /磁盘 \d+ 个 \/ 索引 \d+ 条/.test(opsShape.head), opsShape.head);
+  check(
+    '对账把"无引用记录 / 磁盘孤儿 / 索引死链"分列而不是混成一个数',
+    opsShape.subs.length === 3 && /无引用记录/.test(opsShape.cells.join(' ')) && /磁盘孤儿/.test(opsShape.cells.join(' ')) && /索引死链/.test(opsShape.cells.join(' ')),
+    opsShape.subs.join(' | ')
+  );
+  check(
+    '清理只有"先预演 + 清理勾选（点名）"，没有一键清空',
+    opsShape.buttons.some((b) => /先预演/.test(b)) &&
+      opsShape.buttons.some((b) => /清理勾选/.test(b)) &&
+      !opsShape.buttons.some((b) => /全部|一键|清空/.test(b)),
+    opsShape.buttons.join(' / ')
+  );
+  check('死链给修复口径而不是让运维删记录', opsShape.deadLinkHint === true);
+  check('安全日志聚合默认就列出分栏与可筛事件', opsShape.logRows > 0 && opsShape.events > 1, `${opsShape.logRows} 行 / ${opsShape.events} 个事件选项`);
+
+  const beforeDry = opsShape.head;
+  const picked = await evaluate(`(() => {
+    const box = document.querySelector('.pane[aria-label="媒体台账"] .pick-list input[type=checkbox]:not(:disabled)');
+    if (!box) return false;
+    box.click();
+    return true;
+  })()`);
+  if (picked === true) {
+    await evaluate(`(() => {
+      const b = [...document.querySelectorAll('.pane[aria-label="媒体台账"] button')].find((x) => /先预演/.test(x.textContent));
+      b.disabled = false;
+      b.click();
+      return true;
+    })()`);
+    const planned = await waitFor(
+      `document.querySelectorAll('.pane[aria-label="媒体台账"] .plan summary').length === 1`,
+      10000,
+      '预演清单'
+    );
+    const planText = await evaluate(`document.querySelector('.pane[aria-label="媒体台账"] .plan summary')?.textContent?.replace(/\\s+/g,' ').trim() || ''`);
+    check('预演列出了将被删的每一项与被拒原因', planned === true && /索引 \d+ 条 \/ 孤儿 \d+ 个 \/ 被拒 \d+ 项/.test(planText), planText);
+    await evaluate(`document.querySelector('.pane[aria-label="媒体台账"] .plan summary').click(), true`);
+    await evaluate(`(() => {
+      const b = [...document.querySelectorAll('.pane[aria-label="媒体台账"] button')].find((x) => /重新对账/.test(x.textContent));
+      b.click();
+      return true;
+    })()`);
+    const afterDry = await waitFor(
+      `(() => { const n = document.querySelector('.pane[aria-label="媒体台账"] .micro-label'); return n && /磁盘 \\d+ 个 \\/ 索引 \\d+ 条/.test(n.textContent); })()`,
+      10000,
+      '预演后重新对账'
+    );
+    const headNow = await evaluate(`document.querySelector('.pane[aria-label="媒体台账"] .micro-label')?.textContent?.trim() || ''`);
+    check('预演一个字节都不动（重新对账后合计与预演前一致）', afterDry === true && headNow === beforeDry, `${beforeDry} → ${headNow}`);
+
+    await evaluate(`(() => {
+      const b = [...document.querySelectorAll('.pane[aria-label="媒体台账"] button')].find((x) => /清理勾选/.test(x.textContent));
+      b.disabled = false;
+      b.click();
+      return true;
+    })()`);
+    const dialogOpen = await waitFor('Boolean(document.querySelector(".paper-dialog[open]"))', 8000, '清理确认框');
+    const dialogText = await evaluate(`document.querySelector('.paper-dialog[open]')?.textContent?.replace(/\\s+/g,' ').trim().slice(0, 120) || ''`);
+    await evaluate(`document.querySelector('.paper-dialog[open] footer button:first-child').click(), true`);
+    await sleep(600);
+    const headAfterCancel = await evaluate(`document.querySelector('.pane[aria-label="媒体台账"] .micro-label')?.textContent?.trim() || ''`);
+    check(
+      '清理走二次确认，且取消后不改磁盘',
+      dialogOpen === true && /点名|确认|预演/.test(dialogText) && headAfterCancel === beforeDry,
+      `${dialogText.slice(0, 46)} → ${headAfterCancel}`
+    );
+  } else {
+    check('台账本轮无候选项（磁盘与索引两清，因此不演练勾选）', opsShape.picks === 0, `${opsShape.picks} 个勾选框`);
+  }
+
+  const logFiltered = await evaluate(`(() => {
+    const sel = document.querySelector('.pane[aria-label="安全日志"] select');
+    const want = [...sel.options].map((o) => o.value).filter(Boolean)[0] || '';
+    if (!want) return 'none';
+    const set = Object.getOwnPropertyDescriptor(sel.constructor.prototype, 'value').set;
+    set.call(sel, want);
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sel.closest('form').requestSubmit();
+    return want;
+  })()`);
+  // busy 由请求收回后，读到的才是筛选结果（只等 DOM 存在会读到上一次的全量表）
+  await waitFor(`document.querySelector('.pane[aria-label="安全日志"] .micro-label')?.getAttribute('aria-busy') === 'false'`, 9000, '日志筛选完成');
+  await sleep(300);
+  const logShape = JSON.parse(await evaluate(`JSON.stringify({
+    event: (() => { const s = document.querySelector('.pane[aria-label="安全日志"] select'); return s ? s.value : ''; })(),
+    shownEvents: [...(document.querySelectorAll('.pane[aria-label="安全日志"] table')[1]?.querySelectorAll('tbody tr') || [])].map((tr) => tr.children[1]?.textContent.trim()),
+    note: document.querySelector('.pane[aria-label="安全日志"] .micro-label')?.textContent?.trim() || '',
+  })`));
+  check(
+    '按事件筛选后，最近条目表里只剩该事件（筛选真的落到查询上）',
+    logShape.event === logFiltered && logShape.shownEvents.length > 0 && logShape.shownEvents.every((e) => e === logFiltered),
+    `事件 ${logShape.event} · 表内 ${[...new Set(logShape.shownEvents)].join(',')} · ${logShape.note.slice(0, 40)}`
+  );
+  const hit = logShape.note.match(/全量 (\d+) 条 \/ 命中 (\d+) 条/);
+  check(
+    '筛选态在页眉给出"全量/命中"两个数，不把筛选结果误读成全量',
+    Boolean(hit) && Number(hit[2]) > 0 && Number(hit[2]) <= Number(hit[1]) && logShape.shownEvents.length <= Number(hit[2]),
+    logShape.note.slice(0, 60)
+  );
+  await shot('13-ops-ledger');
+  await evaluate(`(() => {
+    const sel = document.querySelector('.pane[aria-label="安全日志"] select');
+    const set = Object.getOwnPropertyDescriptor(sel.constructor.prototype, 'value').set;
+    set.call(sel, '');
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sel.closest('form').requestSubmit();
+    return true;
+  })()`);
+  await waitFor(`document.querySelector('.pane[aria-label="安全日志"] .micro-label')?.getAttribute('aria-busy') === 'false'`, 9000, '回到全量的读取完成');
+  await sleep(300);
+  const logAll = JSON.parse(await evaluate(`JSON.stringify({
+    events: [...new Set([...(document.querySelectorAll('.pane[aria-label="安全日志"] table')[1]?.querySelectorAll('tbody tr') || [])].map((tr) => tr.children[1]?.textContent.trim()))],
+    options: document.querySelectorAll('.pane[aria-label="安全日志"] select option').length,
+    note: document.querySelector('.pane[aria-label="安全日志"] .micro-label')?.textContent?.trim() || '',
+  })`));
+  const nums = logAll.note.match(/全量 (\d+) 条 \/ 命中 (\d+) 条/);
+  check(
+    '清空筛选即回到全量聚合（筛选是查询不是改写）',
+    logAll.events.length > 1 && logAll.options > 1 && Boolean(nums) && nums[1] === nums[2],
+    `回到 ${logAll.events.length} 种事件 / ${logAll.options} 个可选项 / ${logAll.note.slice(0, 34)}`
+  );
+
+  // ---------- 版本台账总表（/ledger）：全站口径读数、按动作筛选、清空、行链跳版本清单 ----------
+  await cdp.send('Page.navigate', { url: `${SITE}/ledger` });
+  const ledgerReady = await waitFor(
+    `document.querySelectorAll('.pane[aria-label="台账口径"] .ledger .cell').length === 5`,
+    12000,
+    '台账口径读数'
+  );
+  const ledgerShape = JSON.parse(await evaluate(`JSON.stringify({
+    cells: [...document.querySelectorAll('.pane[aria-label="台账口径"] .ledger .cell')].map((c) => c.textContent.replace(/\\s+/g, ' ').trim()),
+    head: document.querySelector('.pane[aria-label="台账口径"] .micro-label')?.textContent?.trim() || '',
+    flowRows: document.querySelectorAll('.pane[aria-label="版本流水"] table tbody tr').length,
+    postRows: document.querySelectorAll('.pane[aria-label="按档案汇总"] table tbody tr').length,
+    kindOptions: [...document.querySelectorAll('.pane[aria-label="版本流水"] select')].map((s) => s.options.length),
+    goneRows: document.querySelectorAll('.pane[aria-label="版本流水"] tr.is-gone').length,
+    firstFlowLink: document.querySelector('.pane[aria-label="版本流水"] tbody tr a[href$="/revisions"]')?.getAttribute('href') || '',
+  })`));
+  check(
+    '版本台账总表给出全站口径五分栏（版本总数/涉及档案/快照占用/每档保留/已撤档仍在册）',
+    ledgerReady === true &&
+      /版本总数/.test(ledgerShape.cells.join(' ')) && /涉及档案/.test(ledgerShape.cells.join(' ')) &&
+      /快照占用/.test(ledgerShape.cells.join(' ')) && /每档保留/.test(ledgerShape.cells.join(' ')) &&
+      /已撤档仍在册/.test(ledgerShape.cells.join(' ')),
+    ledgerShape.cells.join(' | ')
+  );
+  check(
+    '版本流水与按档案汇总两张表都渲染出来（不是空页）',
+    ledgerShape.flowRows > 0 && ledgerShape.postRows > 0,
+    `流水 ${ledgerShape.flowRows} 行 / 汇总 ${ledgerShape.postRows} 行`
+  );
+  check(
+    '版本流水的行链指向该档的版本清单页',
+    /^\/post\/[^/]+\/revisions$/.test(ledgerShape.firstFlowLink),
+    ledgerShape.firstFlowLink || '（无链接）'
+  );
+
+  const kindFiltered = await evaluate(`(() => {
+    const sel = [...document.querySelectorAll('.pane[aria-label="版本流水"] select')].find((s) => [...s.options].some((o) => o.value === 'create'));
+    if (!sel) return 'none';
+    const set = Object.getOwnPropertyDescriptor(sel.constructor.prototype, 'value').set;
+    set.call(sel, 'create');
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sel.closest('form').requestSubmit();
+    return 'create';
+  })()`);
+  await waitFor(`document.querySelector('.pane[aria-label="版本流水"] .micro-label')?.getAttribute('aria-busy') === 'false'`, 9000, '台账筛选完成');
+  await sleep(300);
+  const kindsShown = JSON.parse(await evaluate(`JSON.stringify(
+    [...document.querySelectorAll('.pane[aria-label="版本流水"] table tbody tr')].map((tr) => tr.children[3]?.textContent.trim())
+  )`));
+  check(
+    '按"建档"筛选后，流水表里只剩建档动作（筛选真的落到查询上）',
+    kindFiltered === 'create' && kindsShown.length > 0 && kindsShown.every((k) => /建档/.test(k)),
+    `动作 ${[...new Set(kindsShown)].join(',') || '（空）'}`
+  );
+  const cleared = await evaluate(`(() => {
+    const b = [...document.querySelectorAll('.pane[aria-label="版本流水"] button')].find((x) => /清空筛选/.test(x.textContent));
+    if (b) { b.click(); return 'button'; }
+    const sel = [...document.querySelectorAll('.pane[aria-label="版本流水"] select')].find((s) => [...s.options].some((o) => o.value === 'create'));
+    const set = Object.getOwnPropertyDescriptor(sel.constructor.prototype, 'value').set;
+    set.call(sel, '');
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sel.closest('form').requestSubmit();
+    return 'select';
+  })()`);
+  await waitFor(`document.querySelector('.pane[aria-label="版本流水"] .micro-label')?.getAttribute('aria-busy') === 'false'`, 9000, '清空筛选完成');
+  await sleep(300);
+  const afterClear = JSON.parse(await evaluate(`JSON.stringify(
+    [...new Set([...document.querySelectorAll('.pane[aria-label="版本流水"] table tbody tr')].map((tr) => tr.children[3]?.textContent.trim()))]
+  )`));
+  check(
+    '清空筛选即回到全量台账（建档与修订都在）',
+    cleared !== 'none' && afterClear.length >= 1 && !afterClear.every((k) => /建档/.test(k)),
+    `回到动作 ${afterClear.join(',') || '（空）'} · 方式 ${cleared}`
+  );
+  await shot('13b-ledger');
+
   // 窄屏：两张新表格不得撑破卷面
   await viewport(390, 844);
   await sleep(700);
@@ -1085,14 +1520,36 @@ async function main() {
   await cdp.send('Page.navigate', { url: `${SITE}/resources` });
   await sleep(900);
   const overflowRes = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+  await cdp.send('Page.navigate', { url: `${SITE}/ops` });
+  await sleep(1400);
+  const overflowOps = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+  await cdp.send('Page.navigate', { url: `${SITE}/ledger` });
+  await sleep(1400);
+  const overflowLedger = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+  const ledgerRowsAtNarrow = await evaluate(`document.querySelectorAll('.pane[aria-label="版本流水"] table tbody tr').length`);
+  const seededId = await evaluate(`(async () => {
+    const r = await fetch('/api/posts?page=1&size=1');
+    const j = await r.json();
+    return j.items?.[0]?.id || '';
+  })()`);
+  await cdp.send('Page.navigate', { url: `${SITE}/post/${seededId}/revisions` });
+  await sleep(1400);
+  const revAtNarrow = await evaluate(`document.querySelectorAll('.pane[aria-label="版本清单"] tbody tr').length`);
+  const overflowRev = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
   await cdp.send('Page.navigate', { url: `${SITE}/library/bseed2/read?c=0&p=1` });
   await sleep(1200);
   const overflowRead = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
+  await cdp.send('Page.navigate', { url: `${SITE}/library/bseed3/read?c=0&p=1` });
+  await sleep(1200);
+  const overflowPdf = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);
   check(
-    '镜像页、资源库页与阅览页窄屏无横向溢出',
-    Number(overflowLib) <= 0 && Number(overflowRes) <= 0 && Number(overflowRead) <= 0,
-    `library ${overflowLib}px / resources ${overflowRes}px / reader ${overflowRead}px`
+    '镜像页、资源库页、馆务台账、版本台账总表、逐档版本台账与两型阅览页窄屏无横向溢出',
+    Number(overflowLib) <= 0 && Number(overflowRes) <= 0 && Number(overflowOps) <= 0 &&
+      Number(overflowLedger) <= 0 && Number(overflowRev) <= 0 && Number(overflowRead) <= 0 && Number(overflowPdf) <= 0,
+    `library ${overflowLib}px / resources ${overflowRes}px / ops ${overflowOps}px / ledger ${overflowLedger}px / revisions ${overflowRev}px / epub ${overflowRead}px / pdf ${overflowPdf}px`
   );
+  check('窄屏上逐档版本台账是真的渲染出来了（不是空表骗过溢出判定）', Number(revAtNarrow) >= 1, `${revAtNarrow} 行`);
+  check('窄屏上版本台账总表流水是真的渲染出来了（不是空表骗过溢出判定）', Number(ledgerRowsAtNarrow) >= 1, `${ledgerRowsAtNarrow} 行`);
   await cdp.send('Page.navigate', { url: `${SITE}/about` });
   await sleep(900);
   const overflowAbout = await evaluate(`document.documentElement.scrollWidth - document.documentElement.clientWidth`);

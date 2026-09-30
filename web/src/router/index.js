@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 const routes = [
   { path: '/', name: 'home', component: () => import('../views/HomeView.vue'), meta: { title: '卷首 · 档案瀑布' } },
   { path: '/post/:id', name: 'post', component: () => import('../views/PostView.vue'), meta: { title: '辟谣档案' } },
+  { path: '/post/:id/revisions', name: 'revisions', component: () => import('../views/RevisionsView.vue'), meta: { title: '版本台账' } },
   { path: '/search', name: 'search', component: () => import('../views/SearchView.vue'), meta: { title: '检索' } },
   { path: '/tags', name: 'tags', component: () => import('../views/TagsView.vue'), meta: { title: '话题索引' } },
   { path: '/resources', name: 'resources', component: () => import('../views/ResourcesView.vue'), meta: { title: '辟谣常用资源库' } },
@@ -33,6 +34,18 @@ const routes = [
     name: 'users',
     component: () => import('../views/UsersView.vue'),
     meta: { requiresAuth: true, title: '用户名册' },
+  },
+  {
+    path: '/ops',
+    name: 'ops',
+    component: () => import('../views/OpsView.vue'),
+    meta: { requiresAuth: true, title: '馆务台账' },
+  },
+  {
+    path: '/ledger',
+    name: 'ledger',
+    component: () => import('../views/LedgerView.vue'),
+    meta: { requiresAuth: true, title: '版本台账总表' },
   },
   { path: '/:pathMatch(.*)*', name: 'not-found', component: () => import('../views/NotFoundView.vue'), meta: { title: '未收录' } },
 ];

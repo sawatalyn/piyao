@@ -44,14 +44,21 @@ export const config = {
   readEntryMaxBytes: Number(process.env.BW_READ_ENTRY_MAX_MB || 16) * 1024 * 1024,
   readPageMaxBytes: Number(process.env.BW_READ_PAGE_MAX_KB || 128) * 1024,
   readWholeMaxBytes: Number(process.env.BW_READ_WHOLE_MAX_KB || 1024) * 1024,
+  // PDF 没有 spine：有书签就按书签分节，没书签就按这个页数切（BW_PDF_PAGES_PER_CHAPTER）
+  pdfPagesPerChapter: Number(process.env.BW_PDF_PAGES_PER_CHAPTER || 12),
+  // 修订档案：每档保留最近 N 个版本，超出即丢最旧（版本历史是台账不是备份盘）
+  revisionKeep: Number(process.env.BW_REVISION_KEEP || 30),
   // 明文 CSV 口令存储为用户明确指定的需求；置 1 可切换为 scrypt 哈希
   hashPasswords: process.env.BW_HASH_PASSWORDS === '1',
+  // 写操作限流（每分钟每用户/每 IP）：正常编辑一页档案要 3-5 次写，40 足够；自检线里会调高以免自伤
+  writeLimitPerMinute: Number(process.env.BW_WRITE_LIMIT_PER_MIN || 40),
   cookieName: 'bw_sid',
   csrfHeader: 'x-bw-csrf',
   mediaDir: MEDIA_DIR,
   libraryDir: LIBRARY_DIR,
   paths: {
     posts: path.join(DATA_DIR, 'posts.json'),
+    revisions: path.join(DATA_DIR, 'revisions.json'),
     menu: path.join(DATA_DIR, 'menu.json'),
     tags: path.join(DATA_DIR, 'tags.json'),
     users: path.join(DATA_DIR, 'users.csv'),

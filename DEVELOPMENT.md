@@ -10,14 +10,16 @@
 | 项 | 值 |
 | --- | --- |
 | 形态 | Nginx 托管的类 wiki 辟谣档案站（辨妄阁），四段式外壳：header / sidebar / main / footer |
-| 规模 | 前端 29 个 `.vue` + 18 个 js/css；后端 22 个模块、41 个路由处理器；6 个自检脚本 |
+| 规模 | 前端 31 个 `.vue` + 18 个 js/css（16 个路由视图）；后端 27 个模块、56 个路由处理器；6 个自检脚本 |
 | 栈 | pnpm 11.1.3 workspace + Vue 3.5.43 + Vite 8.3.1（Rolldown）+ Pinia 4.0.3 + Vue Router 5.3.1；Express 5.2.1 + JSON 文件存储 |
 | 富文本 | CKEditor 5 免费版 `ckeditor5@48.5.2`（GPL-2.0-or-later）+ 本站自定义插件四枚按钮 |
+| 阅览 | EPUB 与 PDF 双型在线阅览（`pdfjs-dist@6.3.289` Apache-2.0）+ 逐本勾选的预览白名单 |
 | 存储 | 优先 JSON：`server/data/*.json` + `users.csv` + `media/` + `library/`；实测无需数据库 |
 | 视觉 | terra-faction-ui 的 **Yan（炎国 archival）阵营语法 · 最高规格（maximal）**，根属性 `data-terra-faction="yan-archival"` |
 | 安全 | 严格 CSP（无 `unsafe-inline`）、CSRF 双提交、登录与验印双维度锁定、HMAC 短时效直链、反爬 UA 门槛、5MB 单图上限 |
-| 本轮验证 | 接口 31/31 · 全量 149/149 · 浏览器走查 119/119（控制台零输出、CSP 零违规）· Yan 契约审计 49 文件无告警 · 色域审计 PASS |
-| 交付纪律 | 只采纳宽松许可（MIT/Apache/BSD/ISC/CC0）代码；**唯一 copyleft 例外是 CKEditor 5，按用户明确指定引入并单独核实**；不打包任何官方标识、美术、CDN 素材 |
+| 台账 | 档案逐版快照与词级比对（`diff@9` BSD-3-Clause）、媒体三方对账与点名清理、`security.log` 聚合视图 |
+| 本轮验证 | 接口 48/48 · 全量 218/218 · 浏览器走查 163/163（控制台零输出、CSP 零违规）· Yan 契约审计 52 文件无告警 · 色域审计 PASS |
+| 交付纪律 | 只采纳宽松许可（MIT/Apache/BSD/ISC/CC0）代码；**唯一 copyleft 例外是 CKEditor 5，按用户明确指定引入并单独核实**；不打包任何官方标识、美术、CDN 素材；**选型一律"先找现成开源、核实许可、再决定自研"**（§三 3.4） |
 
 ---
 
@@ -39,10 +41,14 @@
 | R10 | 唯一置顶且自动释放、拖拽重排、logo 参照、菜单编辑器、页脚记录全部框架与协议 | `posts.setPinned`（转移即释放原置顶）+ sortablejs + `MenuEditorView` + 页脚登记表 | ✅ |
 | R11 | 侧栏：图文重排序（登录可见）+ 菜单编辑（登录可见）+ **辟谣话题 tag 列表（所有人可见）** | `AppSidebar.vue` 三段 + 资源库块 + 镜像块 | ✅ |
 | R12 | 针对**无职转生**专题：中文区访谈/翻译合集等查证载体 + 洛琪希图书馆-借书柜台 → **辟谣常用资源库**；并建 **EPUB 本地镜像站**，口令由登录用户管理，同样在侧栏呈现 | `resources.json` + `/resources` + 侧栏块（12 条实测种子）；`library.json` + `library-keys.json` + `/library` 页 | ✅ |
-| R13 | （追加）镜像的 EPUB **在线阅览**，且 **10MB 以上按章节拆成多个可阅览网页** | `server/src/library/`（zipRead + epubRead）+ `/library/:id/read` | ✅ 阈值是硬边界：超限整本渲染返回 409 |
+| R13 | （追加）镜像的 **EPUB / PDF 在线阅览**，且 **10MB 以上按章节拆成多个可阅览网页** | `server/src/library/`（zipRead + epubRead + pdfRead）+ `/library/:id/read` | ✅ 阈值是硬边界：超限整本渲染返回 409；PDF 用书签层级切节、只出文字层不做光栅化 |
 | R14 | （追加）调研 CKEditor 5，用**免费版**作富文本基底，需要加按钮就以**自定义插件**形式加 | `ckeditor5@48.5.2` + `licenseKey: 'GPL'` + `YanMarkup` 四枚按钮 | ✅ premium 件一个没用 |
-| R15 | 调研 GitHub 可参照案例，**遵守仓库声明的协议** | 见 `THIRD_PARTY_NOTICES.md`：宽松许可者可对照/引入；`NONE/NOASSERTION` 只读思路；AGPL/GPL 不取码（除 R14 指定例外） | ✅ |
+| R15 | 调研 GitHub 可参照案例，**遵守仓库声明的协议** | 见 `THIRD_PARTY_NOTICES.md`：宽松许可者可对照/引入；`NONE/NOASSERTION` 只读思路；AGPL/GPL 不取码（除 R14 指定例外） | ✅ 每处引入都留"排除了哪些现成方案"的证据（§三 3.5） |
 | R16 | （追加）**每个功能都配一份实体示例**（完整图文、默认用户、链接、可在线预览的 EPUB），且**示例均可删除或再编辑** | `server/scripts/reseed.js`（演示链接改指保留域、补 `demo` 用户与站内链接条目）+ `/about`「出厂示例」表（`AboutView.vue`） | ✅ 体检与走查逐项复核在位、可删、可恢复 |
+| R17 | （追加）镜像站**架上检索**：口令解锁后可对书名/著译者/章节标题做站内检索 | `library.searchOnShelf()` + `/api/library/search` + `LibraryView` 检索面板 | ✅ 走查覆盖"按 PDF 书签标题命中章节级结果 → 直达该节 → 收起" |
+| R18 | （追加）**档案版本化**：逐版本完整快照 + 任选两版比对 | `store/revisions.js`（14 个可比字段、正文词级 diff）+ `/post/:id/revisions`（`RevisionsView.vue`） | ✅ 保留版数由 `BW_REVISION_KEEP` 控制（默认 30） |
+| R19 | （追加）**媒体 GC 可视化** + **`security.log` 可观测性** | `store/mediaInventory.js`（磁盘/索引/在档引用三方对账 + 点名清理）+ `security/logInsight.js`（聚合与信号）+ `/ops`（`OpsView.vue`） | ✅ 清理**默认预演**，`confirm` 才动手；日志不引第三方栈（理由见 §三 3.5） |
+| R20 | （追加）**预览白名单**：不是登记在册的书都能在线读 | `library.json` 的 `previewable`（登记时逐个勾选、管理面可开关）→ 未勾选者阅览 403 `preview-off` | ✅ 架上入口与管理面行状态同步 |
 
 **刻意不做的三件事**（避免把"备份镜像站"做成侵权分发站）：
 1. 不代抓网盘、不下载小说/EPUB/翻译稿/漫画扫描，不绕过百度盘与登录门槛；镜像只伺服馆员自行放入 `server/data/library/` 的文件。
@@ -61,9 +67,11 @@
                     ├── /api/library/*/reader|asset → 逐章取页与插图（复用 bw_media 频控）
                     ├── /api/media/  → HMAC 签名短时效直链
                     └── /api/        → Node（Express 5，仅监听 127.0.0.1）
-                                          ├── store/jsonStore.js  原子写 + mtime 失效 + 常驻索引
-                                          ├── security/*          头、CSRF、会话、限次、审计、净化、签名
-                                          ├── library/*           ZIP 中央目录 + EPUB spine 分页
+                                          ├── store/jsonStore.js  原子写 + mtime 失效 + 数据代次
+                                          ├── store/revisions.js  逐版完整快照 + 词级比对
+                                          ├── store/mediaInventory.js 磁盘/索引/引用三方对账
+                                          ├── security/*          头、CSRF、会话、限次、审计、净化、签名、日志聚合
+                                          ├── library/*           ZIP 中央目录 + EPUB spine 分页 + PDF 书签分节
                                           └── search/vectorIndex  MiniSearch + 中文 bigram
 ```
 
@@ -81,12 +89,12 @@ web/src/
   editor/     yan-markup.js（CKEditor 自定义插件：命令、转换、widget、按钮）
   components/ layout/ cards/ editor/ paper/（RichHtml、EpubHtml、ConfirmDialog…）
   stores/     ui / auth / catalog / menu / resources / library（Pinia setup store）
-  views/      13 个路由视图（含 LibraryView、ReaderView）
+  views/      16 个路由视图（含 LibraryView、ReaderView、OpsView、RevisionsView）
 server/src/
-  store/      jsonStore / posts / menu / users / sessions / resources / library
-  security/   middleware / attempts / audit / media / sanitize
-  library/    zipRead（ZIP 定点随机读） / epubRead（spine 解析 + 分页 + 净化）
-  routes/     auth / content / media / resources / library
+  store/      jsonStore / posts / menu / users / sessions / resources / library / revisions / mediaInventory
+  security/   middleware / attempts / audit / media / sanitize / logInsight
+  library/    zipRead（ZIP 定点随机读） / epubRead（spine 解析 + 分页 + 净化） / pdfRead（书签分节 + 文字层）
+  routes/     auth / content / media / resources / library / ops
 ```
 
 ---
@@ -111,6 +119,15 @@ server/src/
 | sanitize-html | 2.17.7 | MIT | 服务端白名单净化；`transformTags` 负责改写 href/src |
 | cookie-parser | 1.4.7 | MIT | 会话 Cookie 解析 |
 | minisearch | 7.2.0 | MIT | 常驻内存 BM25+，可注入自定义分词（中文 bigram），免部署额外搜索引擎 |
+| pdfjs-dist | 6.3.289 | Apache-2.0 | PDF 在线阅览的**唯一**可行宽松许可渲染器；只取文字层与书签，不做服务端光栅化。v6 已移除 `PDFDocumentProxy.destroy()`（§六 D-9） |
+| diff（jsdiff） | 9.0.0 | BSD-3-Clause | 版本比对的词/字级 `diffWords`；带 `maxEditLength` 熔断，超限降级为整段（§六 D-10 同族的性能纪律） |
+| @rgrove/parse-xml | 5.0.0 | ISC | EPUB 的 `container.xml` / OPF / nav / NCX 严格解析，零传递依赖；替换原先的正则"解析"（§六 D-11） |
+| csv-parse / csv-stringify | 7.0.3 / 6.9.0 | MIT | `users.csv` 的引号与换行转义；自写 `parseCsvLine` 会让口令里的 `\n` 造出幽灵身份行（§六 E-8） |
+
+**引入即登记**：以上每一行都出现在页脚「框架与许可」表与 `THIRD_PARTY_NOTICES.md` 里，由
+`scripts/gen-license-manifest.mjs` 从**已安装包的 `package.json` 实测**生成，不手写。
+**生产依赖一律精确 pin**（无 `^`/`~`），因为本项目要交付"解压即用"的部署包，浮动的范围符会让重装拿到不同版本；
+新增依赖忘 pin 会被 `scripts/pin-guard.mjs` 挡下（§八）。
 
 ### 3.2 运行时与部署件
 
@@ -129,7 +146,81 @@ Node.js 24.14.1（MIT）· Nginx 1.24+（BSD-2-Clause）· pnpm 11.1.3（MIT）�
 | `terra-faction-ui`（技能包） | ISC | 提供 Yan 阵营证据化界面语法；无公开 URL，故页脚该行为"未声明" |
 | EPUB 3 / ZIP 结构 | 规范文档 | 解析层**全自写**，未引入 `epub.js`/`adm-zip`，零新增许可面 |
 
-### 3.4 页脚出处链接的取法
+### 3.4 选型台账（先找现成仓库，再决定自研）
+
+**规则**：每一个要自研的能力，先按"是否有现成开源、是否合需求、是否可二次开发"找一轮仓库，
+许可**落到包自带的 LICENSE / `package.json` 实测**（不看 README 的口头声明、不看搜索摘要），
+能直接用就直接用并登记进 §3.1 与 `THIRD_PARTY_NOTICES.md`；确需自研才自研，并把**排除了哪些现成方案、为什么**留在这里。
+本项目所有轮次的 registry/GitHub API 原始响应留档在 `.scratch-oss-select-a7x2/`（`n-*.latest.json`、`gh-*.json`、`m-*.json`），
+下表每一项都能回指到那份原始件。
+
+#### 3.4.0 选型过程综述（方法论：为什么这样选，而不是选了什么）
+
+这一节讲的是**流程**，不是清单——清单在下面两张表里。全站每一个"要不要自己写"的决定都走同一条四步漏斗，
+顺序不可颠倒：**颠倒一次就会退化成"先写了自己的轮子、再回头找有没有现成的"**，那等于没找。
+
+1. **先界定真实需求的最小面**。不是问"有没有 XML 库"，而是问"我到底要 XML 库做哪一件事"。
+   EPUB 要的是**节点文档序**与"坏在哪一份能报出来"，不是"把 XML 变成 JS 对象"；ZIP 要的是
+   "按偏移定点取**一个**条目并限长解压"，不是"把整包读进内存"。**需求面越小，现成库越可能过重**——
+   这一步决定了后面"引入 vs 自研"的天平往哪边偏。
+2. **按最小面搜现成开源仓库，并核实许可**。渠道是 npm registry 与 GitHub API，**不是搜索引擎摘要**。
+   许可只认两种实测证据：包内 `LICENSE` 文件全文，或 `package.json` 的 `license` 字段——
+   README 里写的"MIT"、搜索卡片上的许可徽章一律不算数（见过 README 与 `package.json` 打架的包）。
+   白名单是 MIT / Apache-2.0 / BSD / ISC / CC0；**MPL-2.0 / LGPL 属"需单独批准"档**（文件级 copyleft），
+   AGPL / GPL / SSPL / `NOASSERTION` / 无 LICENSE 直接出局，只能"读思路不取码"。唯一例外是用户点名的
+   CKEditor 5 免费版（GPL-2.0-or-later），单独核实、单独在 §3.1 与 NOTICES 登记、并写进风险表 R-3。
+   **传递依赖也要数**：`fast-xml-parser` 许可本身是 MIT，合规，但它拖 6 个传递依赖却给不了"文档序"，
+   于是被 `@rgrove/parse-xml`（单包 ISC、零传递依赖）替掉——许可合规 ≠ 就该引入。
+3. **判"可直接用 / 需二次开发 / 不如自研"**。三档结论都要留证据：
+   - *可直接用*：接口正好覆盖最小面 → 引入并登记（`diff`、`csv-parse/stringify`、`pdfjs-dist`、`@rgrove/parse-xml`）。
+   - *需二次开发*：现成库能当底座，但核心校验仍得自己写 → 算总账。ZIP 类库（`yauzl`/`fflate`）就是这档：
+     即便用它，"条目名越界拒 / `maxOutputLength` 兜底 / 下发前按魔数复核"这三道闸还是得自己握，
+     于是**自研 ~200 行反而比"库 + 再包一层校验"更小、更可控**（ADR D-6）。
+   - *不如自研*：需求面小到现成库都是负担，或语义与本站相反（`isbot` 判 bot 是为了放行，本站要的是直接拒；
+     `steno`/`lowdb` 给不了"带外改文件也要失效缓存"的数据代次）→ 自研，并把排除理由写进下表。
+4. **自产演示件与夹具，绝不引第三方生成库进生产面**。`pngjs`/`pdfkit` 许可都查过、都合规，**但没引**：
+   夹具只要"一小片固定字节"，而 `pdfkit` 会把一个 PDF **生成**器塞进生产依赖——本站对 PDF 只读不写，
+   引它等于白白扩大许可面。PNG 用 `node:zlib` 手搓、PDF/EPUB 用自写 writer。**红线另有一条且更硬：
+   演示件必须本站生成，不抓取、不打包任何受版权保护的作品**（呼应风险表 R-5）。
+
+一句话概括这套流程的取向：**许可是硬门槛（先过筛），需求面最小化是软标尺（再称重），
+"引入的依赖面 + 自研的维护面"两者相加最小者胜出**——不是"能引就引"，也不是"能自研就自研"。
+下面两张表就是这套漏斗跑完后的落档：一张是"本该自研、最后改用了现成的"，一张是"查过现成、最后决定自研的"。
+
+**已按此规则替换掉的自研代码**（不是"新写的"，是"改用的"）：
+
+| 能力 | 原自研做法 | 换成 | 许可（实测） | 换的理由 |
+| --- | --- | --- | --- | --- |
+| 正文逐词比对 | 自写整段对比 | `diff@9.0.0` `diffWords` | BSD-3-Clause | 词/字级 segments 是版本比对的核心体验，自写既不准也费；`maxEditLength:900` 超限降级为整段，避免大文档卡住请求 |
+| EPUB 的 XML 解析 | 正则抓 `<span>` / `attr="…"` | `@rgrove/parse-xml@5.0.0` | ISC（**零传递依赖**） | 正则解析在真实书上会**静默取错节点**；换严格解析后当场暴露并修掉一条"nav 项次序与父级标题丢失"的缺陷（§六 D-11），坏 XML 也不再是空白页而是 422 |
+| `users.csv` 读写 | 自写 `parseCsvLine` + `cell()` | `csv-parse@7.0.3` / `csv-stringify@6.9.0` | MIT | 自写转义不认字段内换行，**口令里带 `\n` 就会造出一条幽灵身份行**（§六 E-8）；引号/换行/CRLF 交回给库 |
+| PDF 在线阅览 | 无从自研 | `pdfjs-dist@6.3.289` | Apache-2.0 | 自己解 PDF 内容流不现实；宽松许可里唯一能用的渲染器 |
+
+**明确排除的现成方案（保留自研，附实测许可）**：
+
+| 候选 | 许可（实测） | 为什么不引入 |
+| --- | --- | --- |
+| `fast-xml-parser` | MIT（传递依赖 6 个：`strnum`、`xml-naming`、`path-expression-matcher`、`is-unsafe`、`fast-xml-builder`、`nodable-entities`） | 许可本身合规，但它把 XML 当"可猜测的数据"映射成 JS 对象：EPUB 要的是**节点顺序**（NCX 文档序即目录序）与"这一份 XML 坏了要报得出是哪一份"，对象映射会丢两者；6 个传递依赖换不来这两件事。`@rgrove/parse-xml` 单包 ISC 且严格 |
+| `pino` + `pino-roll` | MIT / MIT | 本站 `security.log` 是**封顶 5MB、轮 5 份的 JSONL**，聚合口径固定（事件/IP/日/signals）；`logInsight.js` 约 150 行就够，且审计写点是 `appendFileSync` 一行。引 pino 要改写全部 `audit()` 调用点，收益是负的。**注意**：外部采集器接口的对接口径见 §4.8，将来接真日志栈时按那节换，不返工业务代码 |
+| Grafana Loki / Tempo、Grafana | AGPL-3.0（GitHub API 实测） | 强 copyleft 且是**服务端**许可，网络服务即触发开源义务；本站是单实例 JSON 站，没有指标存储需求 |
+| Graylog | `NOASSERTION`（GitHub API 实测，即仓库自定义许可） | 许可非标准、需法务逐条读；不在"宽松许可白名单"内 |
+| Vector | MPL-2.0（GitHub API 实测） | 文件级 copyleft，属于需要**单独批准**的一类；且它是独立进程，不解决"页内看台账" |
+| `yauzl` / `fflate` / `adm-zip` / `jszip` | MIT / MIT / MIT / `(MIT OR GPL-3.0-or-later)` | 本站只需要"读中央目录 → 按偏移定点取**一个**条目 → 解压并限长"，且必须自己握有三道闸：条目名越界（`../`、绝对路径、带协议）拒、`maxOutputLength` 兜底、下发前按魔数复核（§四 4.4、§六 D-7）。现成库要么是全量解压 API（`jszip`/`adm-zip`，内存模型相反），要么仍需在其上再写这层校验（`yauzl`/`fflate`）——**自研 ~200 行反而更小**，见 §五 D-6 |
+| `steno` / `lowdb` | MIT / MIT | `steno` 的原子写与本项目 `writeFileSync(tmp)+renameSync` 等价；`lowdb` 多一层适配器与解析器。本站真正需要的是"带外改文件也要失效缓存"，那是**数据代次**（§六 B-10），现成库都给不了 |
+| `express-brute` | `BSD`（包声明未细化到条款） | 它的计数默认在内存/存储适配器里，而需求是**重启不清零**（锁定期内即使口令正确也拒），`security/attempts.js` 落盘实现；许可声明笼统也增加核实成本 |
+| `file-type` | MIT | ESM-only、内含数十种格式表；本站只需 5 种位图魔数，且**嗅探结果不能替代白名单**——它判为 `image/svg+xml` 的东西照样不能下发（可携带脚本） |
+| `jsondiffpatch` | MIT | 输出是结构 delta（`_text` 数组与增删改标记），面向"程序回放"；版本比对要的是**人能读的逐词 `<ins>/<del>`**，`jsdiff` 直接给 segments |
+| `isbot` | `Unlicense`（公有领域） | 语义与本站需求相反：它把"空 UA / 已知爬虫特征"判为 bot 供调用方**放行或降级**，本站要的是"脚本型 UA 与空 UA 在无会话时**直接拒**"，且无头浏览器（走查用）不能被误伤；UA 清单思路已借鉴（§四 4.1 反爬行） |
+
+**演示件与测试夹具一律自产，不引第三方生成库**：PNG 用 `node:zlib` 手搓（CRC32 + IDAT），
+PDF 用自写的裸对象写入器（含 outline 三枚书签），EPUB 用自写的 ZIP writer（store 与 deflate 两条分支都发）。
+候选 `pngjs@7.0.0`（MIT）与 `pdfkit@0.20.2`（MIT）都查过许可、都合规，**但没引**：夹具只需要"一小片形状固定的字节"，
+而 `pdfkit` 会把一个 PDF **生成**器带进生产依赖面——本站对 PDF 只读不写，引入它等于扩大许可面却不多测出任何东西。
+真正的红线是另一条：**演示件必须本站生成**，不抓取、不打包任何受版权保护的作品。
+
+**"只对照思路、不取码"的清单**另见 §3.3（瀑布流、懒加载、flat-file CMS 安全链路、维基版式）。
+
+### 3.5 页脚出处链接的取法
 
 `scripts/gen-license-manifest.mjs` 从**已安装包的 `package.json` 实测**读取版本、许可与出处：
 `homepage → repository.url → repository（"owner/repo" 简写）→ bugs.url`，并归一化 `git+`、`git://`、`.git`、`#readme`。
@@ -178,11 +269,17 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 - **分包事实**：CKEditor 的 JS/CSS 只进 `EditorView` 懒加载 chunk（782.55 kB / gzip 211.62 kB；CSS 232.05 kB / gzip 36.39 kB），
   游客与只读用户永不下载；阅览页 `ReaderView` 独立 chunk 8.07 kB / gzip 3.91 kB。
 
-### 4.4 洛琪希图书馆镜像与 EPUB 在线阅览
+### 4.4 洛琪希图书馆镜像与 EPUB / PDF 在线阅览
 
 **门控链**（下载与阅览完全一致）：`grants.verify(k,exp,sig)` → 书在架 → `libraryKeys.covers(key, bookId)` →
-类型是 EPUB → 磁盘文件在位。口令表 `library-keys.json` 明文存（与名册同一取舍），可指定范围（`all` / `files`）、
+类型与磁盘文件在位。口令表 `library-keys.json` 明文存（与名册同一取舍），可指定范围（`all` / `files`）、
 可到期、可停用、可吊销；**吊销后已发令牌立即失效**（令牌只签 `keyId.exp`，校验时回查活性）。
+
+**预览白名单**（阅览比下载多的一格授权）：`library.json` 每本带 `previewable`，**登记时逐个勾选**、管理面可随时开关，默认关。
+阅览在门控链之后还要过 `previewable === true`（否则 403 `preview-off`），类型必须是 `epub | pdf`。
+下载**不受**白名单影响（那是馆员的本职），只有"把正文摆到网页上"需要额外一格授权——
+这一格是需求追加的，动机很直白：架上书的权利状态各不相同，"能取文件"不等于"能公开渲染正文"。
+架上入口与管理面行状态**同源同步**（未勾选的书在架上显示"仅可下载"，管理面显示"仅下载"）。
 
 **分页模型**：`container.xml → OPF manifest/spine →（EPUB3 nav | EPUB2 ncx）` 得到"章节 = spine 条目 + 目录标题"；
 一章一个可阅览网页（`/library/:id/read?c=章&p=小节`）；单章正文超过 128KB 时**再按一\~三级标题切小节**，
@@ -201,6 +298,36 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 **令牌活过刷新**：阅览要翻页与刷新，令牌存 `sessionStorage`（随标签页关闭即清）；接口回 403 时前端立即收回解锁态、
 回到口令门，避免"看起来已解锁却反复失败"。
 
+**架上检索**（`library.searchOnShelf()`，`/api/library/search`，口令解锁后面板才出现）：
+一次请求内对**书目元数据**（书名 / 作者 / 译者 / 磁盘文件名 / bookId）与**章节标题**做子串匹配，
+元数据级命中给 `kind:'book'`、标题级命中给 `kind:'chapter'` 并直接带 `c=` 参数——点一下就到那一节，不必先开卷再找。
+PDF 一并参与（节名取自书签）。**刻意不检索正文**：正文检索等于给已解锁者一个"按关键词批量摘取全书"的放大器，
+要开得先定抓取面策略（记在 §十）。检索走的是解析缓存，不额外解压整本；未进白名单的书**不会被检索出来**，
+免得从搜索结果绕过白名单摸到章节标题。
+
+#### 4.4b PDF 阅览的三条边界
+
+`server/src/library/pdfRead.js` 用 `pdfjs-dist`（Apache-2.0，§三）在**服务端**读 PDF，只走三条边界：
+
+1. **分节取自书签（outline）**：`getOutline()` 的顶层项按页码升序整理为"节"，每节带**物理页范围**与页数；
+   没有书签的 PDF 退化为"全本一次给出"。地址栏 `?c=节&p=页`，页眉表述是"第 1 / 3 **节** · 第 1—2 **页**"
+   （EPUB 那边才是"章/小节"，两种书型不共用一套措辞）。
+2. **只出文字层，不做光栅化**：`getTextContent()` 按页聚合成 `<div class="pdf-page">` 段落，
+   **服务端不渲染像素、页内不出现 `canvas` 与位图**（走查专门断这一条）。
+   代价写在风险表里（§七 R-7）：扫描件（无文字层）在阅览页就是空的，只能下载；
+   版面、字体、图片位置不复现。换来的好处是翻页不烧 CPU、正文可复制、可被架上检索命中。
+3. **净化与 CSP 同一条链**：PDF 文字与 EPUB 正文过**同一个** `sanitizeEpubHtml`，
+   所以阅览页依旧满足严格 CSP（无行内样式、无脚本、无 svg）；节标题用 `<h2 id="chN">` 前缀（经净化），
+   全本通读也逐节带锚点。
+
+**资源释放**：pdfjs v6 的文档对象没有 `destroy()`，必须 `await loadingTask.destroy()`（§六 D-9），
+否则每次阅览都留一份字节的 worker 侧引用。`getDocument()` 参数锁
+`{ isEvalSupported: false, useSystemFonts: true, disableFontFace: true, verbosity: 0 }`——
+关 eval 是服务端读不可信文件的硬要求，关字体注入是为了不依赖 `@font-face`（CSP 与无头环境都省事）。
+
+**阈值与全本**：`splitRequired` 的 10MB 硬边界对两种书型同一判据；阈值以下的 PDF 也给"全本通读"，
+单次输出仍限 1MB，超限直接 409 并说明原因。
+
 ### 4.5 资源库（无职转生专题）
 
 `resources.json` 五组分类（官方一手出处 / 中文区查证载体 / 访谈与翻译合集 / 事实核对工具 / 常见误传题材），
@@ -210,7 +337,7 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 
 ### 4.6 出厂示例（每项功能都带一份可删可改的实体）
 
-需求 R16 的落点是 `server/scripts/reseed.js`，四条约束：
+需求 R16 的落点是 `server/scripts/reseed.js`，五条约束：
 
 1. **演示出处不冒充真实文献**。档案的"原始载体链接"与首条材料源链接一律取 RFC 2606 保留域
    （`https://example.org/rumor/n01`、`/evidence/n01-1`），字段名、写入校验、渲染链路全是真的，
@@ -220,13 +347,90 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 3. **可登录用户有两个而不是一个**。`admin` 是需求指定的出厂账号（不可删）；
    另补 `demo`（角色 editor，显示名「示例馆员（可删除）」），使名册的"改密/移除/新增"三条链路在出厂状态就有对象。
    种子**只在缺失时补这一行**，绝不覆盖任何已存在口令，所以管理员改过 admin 密码后重跑 seed 安全。
-4. **阅览链路自带可翻的书**。除下载演示册外，`multiChapterEpub({ chapters: 5 })` 生成一本五章自产正文册，
-   含 `<script>`／`style=""`／`<svg onload>`／外链／跨章锚点等"必须被净化掉"的东西，
-   既是示例也是活体测试样本；两本都 <10MB，因此默认走逐章而不触发强制拆分。
+4. **阅览链路自带可翻的书**（三本，覆盖三种形态）：`multiChapterEpub({ chapters: 5 })` 生成一本五章自产正文册，
+   含 `<script>`／`style=""`／`<svg onload>`／外链／跨章锚点等"必须被净化掉"的东西，既是示例也是活体测试样本；
+   一本自产**带三枚书签的 PDF**（`server/scripts/pdf.js` 裸对象写入器）验"按节翻页 + 文字层 + 无光栅化"；
+   外加一本单章占位册**刻意不入预览白名单**（`previewable: false`），用来演示"仅可下载"的形态差别。
+   三本都 <10MB，因此默认走逐章/逐节而不触发强制拆分。
+5. **版本台账在出厂状态就有内容**：`reseed` 除补档案与媒体外，还按档案数写入"建档"快照
+   （`server/data/revisions.json`），这样 `/post/:id/revisions` 一装好就不是空页，
+   修订一次即累积两版、比对页立刻可看。
 
-清单在公开页 `/about` 的「出厂示例」表里（6 行 × 功能/示例/在哪编辑或删除）。
+清单在公开页 `/about` 的「出厂示例」表里（8 行 × 功能/示例/在哪编辑或删除）。
 **该表刻意不写任何口令值**——口令属 `users.csv` 与镜像口令表，公开页只说"在哪改"。
 恢复出厂演示内容用 `pnpm seed`；它的逐文件行为差异见 README「一、快速开始」的注记。
+
+### 4.7 档案版本化与两版比对
+
+`store/revisions.js` 在**建档与每次修订**时追加一条完整快照到 `revisions.json`（`{postId, id, version, kind, at, by, record}`），
+每档保留最近 `config.revisionKeep`（默认 30，`BW_REVISION_KEEP` 可改）版；**删档不补记、也不抹历史**——
+档案没了，台账还在（`/post/:id/revisions` 会显式提示"《标题》已被移除，以下为其在档期间的历史版本"）。
+
+**可比字段是白名单，不是全量**：14 个字段（标题 / tag / 原始载体链接 / 谣言正文 / 定级 / 辟谣正文 / 材料源 / 批注 /
+编辑者 / 发布日 / 复核日 / 范围 / 等级 / 置顶），其中 `rumor`、`verdict` 标为 **wordwise**，走
+`diffWords(..., { maxEditLength: 900 })` 出逐词 segments，前端渲染成 `<del>` / `<ins>`；
+超限（两版差得太远）返回 `coarse:true` 整段呈现，页面明写"未做逐词标注"。
+签名直链参数在快照前就被剥掉（与 B-8 同一函数），**台账里存的是无签名路径**——所以比对页里出现的
+`/api/media/<id>` 永远不该带 `exp`/`sig`，这条被 sweep 断住。
+
+**接口形状**：`GET /api/posts/:id/revisions?keep&`（`{record, forPost, keep, items, pair}`，清单最新在前）与
+`GET /api/posts/:id/revisions/diff?from&to`（404 `no-revision`）。
+`items` **不含快照**（快照可能很大，清单只要头信息），要正文走 diff 端点——这一点踩过（§六 F-13②）。
+选同一版当基线与对照时**不改写、只提示**（"基线与对照选的是同一版"）。
+
+### 4.8 馆务台账：媒体三方对账与安全日志聚合
+
+`/ops`（`OpsView.vue`，模块注册表 `ops` 项，需登录）把两件"只能从运维视角看"的东西并到一页。
+
+**媒体对账**（`store/mediaInventory.js`）取三个来源做交集：磁盘 `server/data/media/`、`media-index.json`、在档引用
+（档案正文与材料源里出现过的 `/api/media/<id>`）。输出四类：
+`used`（三方一致）、`unreferenced`（索引里有、没人引用）、`orphanFiles`（磁盘上有、索引里没有，带 `sha256` 与
+识别出的 MIME）、`staleIndex`（索引说有、磁盘没了 = 死链）。**死链单独一列**是刻意的：
+它说明"档案里还有指向不存在文件的引用"，修法不是删文件而是回头补图。
+`POST /api/ops/media-gc` **默认预演**（一个字节都不动，只回"将要删什么"），要 `confirm:true` 且**逐个点名** `ids`/`files` 才真删；
+删除前二次校验：越界路径（不在 media 目录内）、非本站写出的扩展名、仍被在档引用者——三种一律拒绝并说明理由。
+**没有"一键清空"**：孤儿文件多为误删档案所致，全删的代价不对称。
+
+**日志聚合**（`security/logInsight.js`）读同一份 `security.log`（JSONL，5MB 封顶、轮 5 份），
+按 `event` / `ip` / `user` / 关键字过滤，给出 `totals`、`byEvent`、`byIp`、`byUser`、`byDay`、`recent`，
+以及一组**信号**（`SIGNAL_EVENTS`：`login-denied`/`login-locked`/`csrf-denied`/`denied-*`/`honeypot-hit`/
+`media-reject`/`library-unlock-denied`/`library-unlock-locked`/`library-scope-denied`/`library-preview-denied`/
+`library-asset-mismatch`/`sign-tampered`）。聚合口径固定，所以自研约 150 行即可，**不为此引第三方日志栈**
+（候选与许可实测见 §三 3.4）。
+
+**给外部采集器留的口子**（将来真要接现成栈时按这条走，不改业务代码）：
+`audit()` 只有一处写点，事件名 + 结构化字段（`{ts, event, ip, user, path, method, ...细节}`）已是稳定契约；
+把 `appendFileSync` 换成 transport（或让 Filebeat/Vector 直接采 `security.log`）不影响任何调用方。
+本轮选择"稳定契约 + 自研读侧"，而不是"现在就上一个 AGPL 的服务端"。
+
+**审计补录**（同一轮做的）：CSRF 拒绝、无会话脚本型 UA 拦截（按 IP 60 秒去重、Map 上限 2000 条）都进日志；
+`audit.rotate()` 修掉了"轮转会覆盖已存在的 `.1`"的缺陷（旧逻辑一步就把 `.1` 冲掉，等于丢掉最近一轮）。
+
+### 4.9 全站版本台账总表（跨档案的核查视角）
+
+§4.7 的 `/post/:id/revisions` 是**逐档**视角：进某一档、选两版、看差异。但运维真正要盯的是
+**全站口径**——"到底存了多少版、`revisions.json` 会不会长成大文件、哪些档案已撤但历史还在册"。
+这一层原来是缺的：只能一档一档点进去数。补法是**不新造存储，只在既有 `revisions.json` 上加一个聚合读端**。
+
+- **端点** `GET /api/ops/revisions?limit&post&kind`（`routes/ops.js`，`requireAuth` + `no-store`）。
+  与逐档端点分开放在 `/ops` 前缀下，是因为它和媒体对账、日志聚合同属"运维视角"，也复用同一道登录门。
+- **聚合** `revisions.ledger()`（`store/revisions.js`）返回三块：`items`（流水，最新在前，`limit` 夹在 1..500，
+  超了给 `truncated`）、`posts`（按档案汇总：版本数、占用字节、最新一版时刻、标题）、`totals`
+  （`entries`/`matched`/`posts`/`bytes`/`keep`/`orphanPosts`）。**流水行沿用 §4.7 的口径：只给表头 + 每版快照的
+  序列化字节数，绝不回快照正文**（`sweep` 断住 `snapshot`/`exp=`/`sig=` 不出现在响应里）。
+- **记忆化按数据代次失效**：台账体积要逐条 `Buffer.byteLength(JSON.stringify(snapshot))`，全量重算在档案多时不便宜，
+  所以缓存槽 `ledgerCache` 记一个 `store.generation('revisions')`；**代次没变就复用，变了才重算**（与 §六 B-10
+  的 MiniSearch 派生缓存同一套机制）。这样"带外改了 `revisions.json`"也能被下一次读感知，而不是读到旧缓存——
+  sweep 里"再写一版后台账口径即时跟上"就是断这条。
+- **撤档仍在册要显式标注**：`ops.js` 用 `posts.all()` 求出在档 id 集合，给每行打 `alive`，并补 `totals.orphanPosts`。
+  这是 §七 R-14"删档不抹历史"的**可视化落点**：页面把 `alive:false` 的行标灰、写「（已撤档）」，
+  运维一眼能看出"台账里这些版本对应的档案已经没了"，涉及"依法删除"类请求时不会漏掉 `revisions.json`。
+- **前端** `LedgerView.vue`（`/ledger`，模块注册表 `ledger` 项，需登录）三个 pane：台账口径五分栏 / 版本流水（可按档案、
+  按动作筛选，可清空，行链跳该档 `/post/:id/revisions`）/ 按档案汇总（达保留上限的行标「已到保留上限」，在档才给「看档案」链接）。
+  与 `/ops` 分开建页而非塞进同一页，是因为两者信息所有权不同：`/ops` 管"文件与日志"，`/ledger` 管"版本与体积"。
+
+**为什么不并进 `/ops`**：曾考虑加个 tab，但 `/ops` 已经有媒体对账 + 日志聚合两块重表格，再叠一块版本流水会让
+窄屏横向溢出判定和"哪块在读"的 `aria-busy` 归属都变糊。分成两页后，各自 `aria-label` 清晰、窄屏各自验溢出（§八走查）。
 
 ---
 
@@ -243,6 +447,11 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 | D-7 | 阅览与下载共用同一枚口令令牌 | 为阅览另发一套凭证 | 少一套密钥与生命周期；代价是令牌出现在 URL 与访问日志中（记为风险 R-4） |
 | D-8 | 页脚出处只取包内声明 | 手写官网地址 | 手写会失真与猜测；实测生成，缺声明就显示"未声明" |
 | D-9 | 明文口令 CSV 保留为默认，另给哈希开关 | 直接强制哈希 | 需求明确指定明文；用 `BW_HASH_PASSWORDS=1` + 文档 + 页脚提示把风险显式化而不是偷偷改掉行为 |
+| D-10 | 阅览比下载多一格"预览白名单"（`previewable`，默认关、登记时逐个勾选） | 全部在架书可阅览 / 全局开关 | "能取文件"不等于"能把正文摆到网页上"：架上书的权利状态不同，公开渲染的暴露面也大得多。代价是馆员要多点一次勾选，管理面与架上入口同步显示状态以免"看起来坏了" |
+| D-11 | PDF 只取**文字层 + 书签**，不在服务端光栅化 | 客户端 pdf.js 渲染 / 服务端出图 | 服务端渲染把 CPU 与内存挂在一次 GET 上，且产出的位图不可检索；客户端渲染又要引入一整套 worker 与 CSP 放宽。代价（扫描件为空、版式不复现）写在 R-7 并在页面上明示 |
+| D-12 | 版本台账存**完整快照**，只留最近 N 版 | 存 diff 补丁 / 无限留档 | 快照让"任选两版比对"成为 O(1) 取值而不是回放补丁链；体积风险改用"保留数 + 清单不带正文 + 按需拉两版"封顶（R-13） |
+| D-13 | 日志聚合自研约 150 行，**不引第三方日志栈** | pino+pino-roll（MIT）/ Loki、Grafana、Tempo（AGPL-3.0）/ Graylog（NOASSERTION）/ Vector（MPL-2.0） | 许可实测与取舍逐条记在 §三 3.4；`audit()` 只有一个写点、事件名与字段已是稳定契约，将来换 transport 不动业务代码 |
+| D-14 | 生产依赖全部精确 pin，并用 `pin-guard` 在 `prebuild` 挡人 | 保留 `^` 范围符 + lockfile | 交付物是"解压即上 Nginx"的包，重装拿到不同版本不可接受；CKEditor 与 pdfjs 都是"大版本换 API"的库（C-3、D-9）。守卫顺带核许可白名单与用途登记 |
 
 ---
 
@@ -259,6 +468,14 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 - **A-4 重复工具调用把同一行 import 写了两遍**（`import zhCn ...` 出现两次 → 构建期才炸）。同一处改动不重复下发；
   改完看 diff 而不是"再发一次保险"。
 - **A-5 脚本名要先核实存在**。`pnpm audit:ui` 定义在根 `package.json`，不在 `web/`；猜命令会静默失败。
+- **A-6 单页兜底 `res.sendFile(绝对路径)` 会把部署目录当 dotfile 判 404**（真实缺陷，打部署包做"解压回环"时才撞到）：
+  把解压出来的包放到任何**以点开头的目录**（`.scratch-*`、`.httpdocs`、`.server`…）时，
+  `GET /` 返回 `{"error":"server-error","message":"Not Found"}`，而 `/api/health` 与 `/assets/*.js` 全正常——
+  看起来像"前端坏了"，其实是 `send` 把**整条绝对路径**按 `/` 切段做 dotfile 检查，
+  `.xxx` 段命中默认 `dotfiles:'ignore'` → 直接 404（`express.static` 不受影响，因为它检查的是相对 root 的路径）。
+  修法：`res.sendFile('index.html', { root: DIST })`——把目录交给 `root`，被检查的只剩 `index.html` 一段。
+  教训：**"绝对路径参数"不等于"更安全"**，同一个 API 在 `static` 与 `sendFile` 两条路上的检查口径不一样；
+  以及：交付包必须做**解压后异地启动**的回环测试，只在原目录跑通的包不算通过。
 
 ### B · Vue 与前端
 
@@ -327,6 +544,24 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 - **D-7 资产类型只认魔数**：SVG/PDF 可携带脚本，即使包内 `manifest` 声明为 `image/svg+xml` 也不下发；
   代价是正文里的 SVG 图形/数学式会被丢弃（页面上留图注占位），这是**明示的取舍**不是 bug。
 - **D-8 图片地址带令牌** → 会进 Nginx `access_log`。时效 10 分钟 + 可吊销 + `no-store`，仍要在部署文档提醒日志权限（见 R-4）。
+- **D-9 pdfjs-dist v6 把 `PDFDocumentProxy.destroy()` 删了**：照 v4/v5 的写法调 `doc.destroy()` →
+  每个 PDF 阅览请求 422 `doc.destroy is not a function`（`finally` 里的异常盖掉了正常结果）。
+  改为**持有 `getDocument()` 返回的 loadingTask**，`finally` 里 `await task.destroy()`——释放字节的职责本来就在 task 上。
+  教训：升级渲染器要读它的 breaking change，`getOutline`/`numPages` 都还活着，只有销毁路径换了主人。
+- **D-10 PDF 整本渲染拿不到节名**：`renderPdfWhole` 只吐文本段，断言"逐节有标题"无从下手。
+  修法：每节前缀一个经 `sanitizeEpubHtml` 的 `<h2 id="chN">`（顺带给全本锚点），并回传 `chapterCount`。
+  **不做服务端光栅化**是明示取舍：页内出现 `canvas`/`img` 位图即判失败（走查专断一条），
+  既守住"CPU 不被渲染拖死"，也守住"文字层可复制可检索"。
+- **D-11 EPUB 的 XML 用正则"解析"**（真实缺陷，因"先找开源"换成 `@rgrove/parse-xml` 才暴露）：
+  原先靠 `text.match(/<nav-label[^>]*>([\s\S]*?)<\/nav-label>/)` 之类取标签内容，两个后果——
+  ① 目录**次序与父子层级**丢失（正则只给"第一个匹配"，NCX 的 `navMap` 嵌套结构被拍平）；
+  ② XML 写坏时不报错，**目录静默变空**，用户看到一本"没有章"的书。
+  换成严格解析后当场发现"nav 项次序错"，并让坏 XML 变成 422 且消息指出是哪一个文件；
+  nav/NCX 另给 `tolerant:true`——最坏只让章节名退化成文件名，不再整本打不开。
+  教训同 B-10：**"能跑出个结果"的正则解析不是解析器**，它把格式错误转成了静默的数据丢失。
+- **D-12 `csv-stringify` 在 `record_delimiter:'\r\n'` 下不给裸 `\n` 加引号**：写出的 CSV 里
+  一个含换行的字段会被 CRLF 记录分隔符"截"成两行（实测往返发现）。
+  修法：`quoted_match: /[",\r\n]/` 显式声明"含 CR/LF 也要引起来"。与 E-8 是同一条链的两端，读侧宽松、写侧必须严格。
 
 ### E · 安全与净化
 
@@ -342,6 +577,17 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 - **E-7 express-rate-limit v8 的键生成**：`keyGenerator` 必须返回**字符串**，IPv6 要经 `ipKeyGenerator` 归一；
   写限流按 `u:<用户名>` 或 `ip:<地址>` 分组。`app.set('trust proxy', 1)` 的前提是 Nginx 为**唯一**反代跳，
   多一跳就会误判来源地址、限流形同虚设。
+- **E-8 自写 CSV 转义让口令里的换行造出"幽灵身份行"**（真实缺陷，换成 `csv-parse`/`csv-stringify` 时发现）：
+  `cell()` 只给含 `"` 与 `,` 的字段加引号，**含 `\n` 的字段原样写出** → 一条用户记录变成磁盘上的两行；
+  读侧按行切分，第二行被当成一条 `username=片段` 的新用户。后果不是"报错"而是**多出一个谁都没登记的账号**。
+  修法：读写都交给 csv-*（写侧另需 D-12 的 `quoted_match`），并把表头判定改成"整行前两列是 `username,password`"而不是"行首前缀"。
+  `full-sweep` 补 5 条：含 `"`、`,`、`\n`、`\r\n`、首尾空格的口令与显示名逐个往返，**行数必须仍是 1**。
+  教训：**明文存储的边界就是转义的边界**；只要有一处手工拼接 CSV，注入点就在"看起来无害的字符"上。
+- **E-9 新增台账写入把自检打到 429**：档案版本化 + 媒体对账 + 日志聚合都算写操作，
+  写限流产品默认 40 次/分，全量体检在默认实例上跑到一半就被 429 掐断——**这不是被测系统坏了，是测试与控件抢同一扇门**。
+  修法：阈值改为可配 `BW_WRITE_LIMIT_PER_MIN`（**产品默认仍是 40，没有偷偷放宽**），自检实例给 300；
+  同时补一条"**限流按配置真的会挡住**"的正向断言（用 `BW_WRITE_LIMIT_PER_MIN=2` 起一个实例打第三发），
+  防止后人把配置项读成"关掉限流"。教训同 F-1：调控件不能只测"放宽后能用"，要测"设小了她真的挡"。
 
 ### F · 验证脚本自身（最阴险：绿灯 ≠ 覆盖）
 
@@ -360,7 +606,14 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 - **F-7 `<dialog>` 选择器要限定打开态**：`.paper-dialog footer button:last-child` 会命中**未打开**的另一个对话框
   → 一律 `.paper-dialog[open] …`。
 - **F-8 headless 里懒加载图片不进视口就不加载**：断言 `naturalWidth` 前先 `scrollIntoView()`。
-- **F-9 转场/动画期间用同名类断言**会命中即将移除的旧节点 → 等稳定态再取。
+- **F-9 转场/异步未完成时用同名类断言**会命中即将移除的旧节点或**上一次请求的结果** → 等稳定态再取。
+  本轮两次撞到同一个根因：① 点 PDF「下一页」后只等 `location.search` 变了就取 `.reading-title`，
+  标题还没随响应体换掉 → 假红；② 馆务台账按事件筛选日志后，只等"表格的第二张存在"就去数事件列，
+  NodeList 恒为真值 → 读到的是**筛选前的全量表** → 又假红。
+  修法：断言前等**该次异步的完成信号**（阅览页等标题文本真的换掉；台账等面板标签的 `aria-busy="false"`），
+  并把完成信号做成产品的一部分（日志面板标签因此带上"全量 N 条 / 命中 M 条" + `aria-busy`——
+  这既给测试一个同步点，也让运维不会把筛选结果误读成全量）。
+  教训：**"等待条件"必须是"我会断言的那个值已经更新"**，不是"页面上有个同名节点"。
 - **F-10 后台任务与子代理必须给独立 scratch 目录、禁止越界删除**。本项目历史上有一次后台调研代理
   `rm -rf` 误删 28 个成品页的事故，规则（独立目录名、只允许逐个 `rm` 自己创建的文件、删除前不看截断输出）
   已固化为全局约束；本仓库所有探针只写 `.scratch-verify/`。
@@ -370,6 +623,43 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
   补示例用户断言（要求 `user.username === 'demo'`）时它才暴露出来（返回 null 而不是 demo）。
   修法与 F-1 同型：helper 先探测调用方是否给了该头（`gaveCookie`），给了就以调用方为准、也不回写实例会话。
   教训：**"断言为 null/为空"的测试必须同时有一条"断言为具体值"的姊妹测试**，否则删掉传参也能过。
+- **F-12 自检脚本自己写死了 8 项菜单**（真实缺陷，加"资源库/镜像站/馆务台账"后撞到）：
+  `api-smoke.mjs` 在测完菜单编辑后要把菜单"还原"，还原载荷是**脚本里手抄的 8 个 moduleId**。
+  于是每次自检收尾都把新增模块**从真实菜单里抹掉**——测试绿灯，站上的入口却没了。
+  修法：脚本 `import { MODULE_IDS } from '../web/src/modules/registry.js'`，还原一律按注册表全量，
+  并加一条"还原后条目数与注册表一致（11/11）"。
+  教训：**测试里的"期望初值"必须与产品同源**；手抄一份常量表等于制造第二个真相（与 B-6/B-6b 同一族）。
+- **F-13 断言"因真实原因通过"要逐个复核口径**（本轮撞了四次）：
+  ① `by === '自检'` 其实是显示名 `档案管理员`；② 版本 `list` 响应**不含快照**，
+  把"快照是不签名路径"的断言放在接口层永远拿不到 → 移到 sweep 的文件层；
+  ③ 种子快照里的图早被抹掉文件，拿它当"在用媒体"就撞上 staleIndex → 改点名新上传的那张，顺势加"死链单列"断言；
+  ④ 文案匹配 `/非本站扩展名/` 与实际"非本站写出的扩展名"不符。
+  全部是**绿灯通过、结论却来自另一条路径**的形态。修法：断言前先打印被断字段的原值（本轮每条都带 `— 实测值` 后缀），
+  并把"异步落盘"的读盘断言一律走 `waitForFile`（`media-index.json` 是排队写的，立刻读会读到旧盘）。
+- **F-14 走查脚本同一作用域又 `const ps`**（第二次撞到 F-4 同族）：新增断言块直接 SyntaxError，
+  `node --check` 一秒就能发现，但**必须先 check 再跑**——跑起来才发现等于白等一趟起服务。
+  本轮改名副后 `psv`；PDF 翻页断言另修一处时序：`location.search` 先变、`.reading-title` 靠后到的响应体才换，
+  只等地址栏就断标题必然假红 → 改成 `waitFor(标题前缀)` 再取值。
+- **F-15 部署验收脚本自己有三条口径错**（拿 8891 的生产实例真跑才暴露）：
+  ① 在**首页**上判 `X-Robots-Tag`——本站只给接口与资产下发该头（正文页是**故意**可被检索的，`robots.txt` 只挡后台路径），
+  所以这条永远红；② 用直连 Node 的入口判 `/assets/*` 的 `immutable`——那是 Nginx `location /assets/` 的职责，
+  Node 侧只给 1h，也算到 Node 头上就永远红；③ 结构断言按"我以为的形状"写：详情响应实际是 `{post:{…}}`、
+  资源库实际是 `{groups:[{items}]}`，直接读 `data.rumor` / `data.items` 就假红。
+  修法：检查项按 **"这个头/这条性质是谁下发的"** 分级——`FAIL`（站点真不通）/ `WARN`（只在生产入口要求，如 CSP）/
+  `INFO`（只有经过 Nginx 才成立，如 immutable），后两级不判红；结构断言一律先 `curl` 看实际响应再写。
+  教训：**"生产标准"不是一个开关能概括的**，同一个头在不同链路（Nginx / Node / 直连）由不同的人下发，
+  判红之前先问"我这次请求经过了谁"。
+- **F-16 "做完动作立刻读台账"必然偶发读空**：`audit()` 为省 syscall 走 **120ms 缓冲落盘**，
+  所以验收脚本在删除档案后马上读 `/api/ops/security-log`，拿到过 0 条（不是没记，是还没落盘）。
+  修法：读侧轮询到出现为止（≤2s）再判；同时把这 120ms 当作**明示的产品取舍**写进文档，
+  而不是让人以为"审计丢了"。与 B-10、F-9 同一族：**异步的写要有异步的读**。
+- **F-17 F-16 的修法本身是个假修法**（做解压回环时才暴露，同一个 FAIL 又红了一次）：
+  轮询的退出条件当时写成"**台账有条数就 break**"。可只读阶段先产生的 `denied-client` 也是一条——
+  于是第一轮就 break，登录与建档还在缓冲里，台账只回 1 条，断言"含登录与档案写操作"判红。
+  上一轮它对 8891 实例**恰好是绿的**，只因那一批事件被同一个 120ms 定时器一起刷了出来：
+  PASS 依赖的是运气而不是条件，这正是 F-13 说的"因真实原因通过"没做到。
+  修法：轮询要等**两类事件都到齐**（`/login/` 与 `/post-/` 各命中一次）才收，超时上限放宽到 5s；
+  并把 `byEvent` 全量打进 detail，让"到底等到几条、等成了什么"在报告里看得见。
 
 ---
 
@@ -381,11 +671,13 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 | --- | --- | --- | --- | --- | --- |
 | R-1 | **口令明文存 CSV**（需求指定） | 默认 `users.csv` 明文；`BW_HASH_PASSWORDS=1` 可切 scrypt | 备份、误暴露、内部人员可读全部口令 | 名册接口默认剔除口令列；`BW_SHOW_PASSWORDS` 才回显；数据目录 Nginx `deny` | 改默认口令 + 开哈希模式 + 确认 `data/` 不在 web root 下 |
 | R-2 | **默认账号 `admin/admin`** | 首次启动即存在 | 公网直接被试出 | 登录限次 + 锁定落盘 | 部署第一步就改名改密（DEPLOY §四 第 1 条） |
-| R-3 | **CKEditor 5 是 GPL-2.0-or-later**（唯一 copyleft 例外） | 免费版 + `licenseKey: 'GPL'`，`COPYING.GPL` 随包 | 义务由**分发**触发：一旦开源整站或对外交付安装包/源码包，**整份前端源码须按同许可释出** | 自托管、不分发构建物；README §八与 NOTICES §1.1 已核实登记 | 任何"开源整站 / 交付源码"决定前先与负责人确认；或改购商业许可 |
+| R-3 | **CKEditor 5 是 GPL-2.0-or-later**（唯一 copyleft 例外） | 免费版 + `licenseKey: 'GPL'`，`COPYING.GPL` 随包 | 义务由**分发**触发：一旦开源整站或对外交付安装包/源码包，**整份前端源码须按同许可释出** | **2026-09-30 已公开发布整站源码，触发点已到——整仓按 GPL-2.0-or-later 释出（见根 `LICENSE`）**；README §八与 NOTICES §1.1 已核实登记；`server/data/`（明文口令、会话、审计日志）经 `.gitignore` 排除，未随仓库分发 | 若要改用宽松许可（MIT/Apache）须先**购入 CKEditor 商业许可并替换该依赖**，否则不得改标许可；发布后任何再分发都须连 `LICENSE` 与 `COPYING.GPL` 一并带上 |
 | R-4 | **口令令牌出现在 URL**（取书与阅览插图） | 10 分钟时效、可吊销、`no-store` | 令牌会进 Nginx `access_log`，日志泄露即短时读权 | 时效短 + 吊销即废 + 范围口令 | 日志 `chmod 640`；或对 `/api/library/` 单设 `access_log off` |
 | R-5 | **镜像站的版权红线** | 只伺服馆员放入 `server/data/library/` 的文件；不代抓网盘、不绕过登录门槛 | 收录他人翻译/扫描本即侵权分发 | 登记时强制"权利声明"字段并在页面前端展示；演示件是自产占位书 | 每本上架都留授权依据；接到投诉即下架（下架只撤登记，原件由馆员自管） |
 | R-6 | **EPUB 正文里的图形/公式会丢** | 只放行位图；SVG、MathML 被净化丢弃 | 少数书看图缺图 | 保留 `figcaption` 与占位框；资产接口按魔数复核 | 需要矢量时改用位图导出，**不要**为样式放宽 CSP |
-| R-7 | **PDF 不能在线阅览** | 阅览接口对非 EPUB 明确返回 409 | 用户以为坏了 | 页面文案与链接按类型区分（PDF 行显示"仅可下载"） | 若要支持，需引渲染器（另立许可与体积评估） |
+| R-7 | **PDF 阅览只走文字层** | `pdfRead.js` 取 `getTextContent()` + `getOutline()`，服务端**不渲染像素** | 扫描件（无文字层）在阅览页是空的；版面/字体/图位不复现 | 页面明示"仅取文字层，版式请下载原文件核对"；无书签的 PDF 退化全本一次给出；未入白名单的书根本进不来 | 需要版面复现或读扫描件时**另起方案**（客户端渲染或受控光栅化），先做 CPU 与许可评估 |
+| R-13 | **版本台账会吃磁盘** | 每次修订存**完整快照**，每档保留 `BW_REVISION_KEEP`（默认 30）版 | 档案多、修订频繁时 `revisions.json` 体积线性上涨；快照里含正文与批注 | 保留数可配、清单接口不返回快照正文、比对按需拉两版 | 上线后定期看 `/ops` 的台账体积；真要长期留档应导出到备份，而不是靠保留数调大 |
+| R-14 | **删档不抹历史，但也不补记** | 撤档时不新增版本，已存快照原样留着 | 台账里会出现"档案已不在、历史仍在"的行（页面已明写提示） | 这是**审计取向**的刻意设计；要连历史一起清就得手工动 `revisions.json` | 涉及"依法删除"类请求时，须同时处理 `revisions.json` 与 `security.log`，只删档案不够 |
 | R-8 | **JSON 存储的规模上限** | 原子写 + 常驻索引 + mtime 失效 | 档案上千本后单文件读写与索引重建变慢；并发写只有进程内序 | 单实例部署；写操作串行 | 接近上限时换库（README §三 的判据），**不要**用"重建索引"当性能手段 |
 | R-9 | **反爬是减速带，不是围墙** | UA 门槛、深翻页门槛、签名直链、限流 | 已解锁口令者仍可逐页取走镜像正文 | 口令可吊销、可限范围、可到期；审计留痕 | 对外发放用**独立口令 + 指定书目范围 + 到期日**，不要发 `all` 长期口令 |
 | R-10 | **`BW_SECRET` 决定会话与所有签名** | 缺失时自动生成 `.secret`（0600） | 换密钥＝全部会话与直链作废；多实例不一致会随机 403 | 文档标注 | 多实例必须显式统一；备份该文件 |
@@ -400,26 +692,76 @@ MiniSearch 常驻内存 + 自写中文 bigram 分词（单字与双字并存）�
 
 | 脚本 | 层次 | 覆盖 | 本轮 |
 | --- | --- | --- | --- |
-| `scripts/api-smoke.mjs` | 打活着的后端 | 权限边界、置顶唯一、HTML 净化、限流、锁定、签名直链过期、魔数与尺寸、反爬 UA、菜单读写 | 31/31 |
-| `scripts/full-sweep.mjs` | **自起 5 个隔离实例**（core / shelves / prod / hash / lock） | 建档到删档全链、媒体回收、资源库增删藏、镜像口令门控与吊销、EPUB 分页阅览边界、**出厂示例实体逐项在位（演示链接 / `demo` 用户可删可恢复 / 五章册逐章 / 站内路径资源）**、生产响应头与"接口不被单页兜底吞掉"、旧菜单文件自动补齐、scrypt 模式、登录锁定 | 149/149 |
-| `scripts/walkthrough.mjs` | 真实浏览器（CDP） | 登录→建档（材料源出处链接随档渲染）→CKEditor 画圈/划线/变色/解除标注→插图→用印→对勘→重排→菜单→置顶→删除→镜像口令→**在线阅览翻页/插图/跨章单页链接/全本/令牌收回**→页脚出处链接→**凡例「出厂示例」表**；窄屏溢出（含凡例三列表）；逐屏截图 | 119/119，控制台零输出、CSP 零违规 |
+| `scripts/api-smoke.mjs` | 打活着的后端 | 权限边界、置顶唯一、HTML 净化、限流、锁定、签名直链过期、魔数与尺寸、反爬 UA、菜单读写、**版本端点与馆务端点**（含全站版本台账总表：口径齐备、只回表头不回快照、按动作/按档案筛选、登出后 401）（菜单清单按注册表派生，见 F-12） | 48/48 |
+| `scripts/full-sweep.mjs` | **自起 7 个隔离实例**（core / shelves / prod / hash / lock / writelimit / keeplimit） | 建档到删档全链、媒体回收、资源库增删藏、镜像口令门控与吊销、EPUB 分页阅览边界、**PDF 阅览与预览白名单（12 + 19 项）**、**版本台账（保留数截断、比对、限流阈值 `BW_WRITE_LIMIT_PER_MIN` / `BW_REVISION_KEEP`）**、**全站版本台账总表（按档案筛选、记忆化按数据代次即时失效、`keep` 随实例配置、删档后 `alive=false` 仍在册）**、**媒体三方对账与点名清理**、**CSV 特殊字符往返**、出厂示例实体逐项在位、生产响应头与"接口不被单页兜底吞掉"、旧菜单文件自动补齐、scrypt 模式、登录锁定 | 218/218 |
+| `scripts/walkthrough.mjs` | 真实浏览器（CDP） | 登录→建档（材料源出处链接随档渲染）→CKEditor 画圈/划线/变色/解除标注→插图→用印→对勘→重排→菜单→置顶→删除→**修订一次→版本台账两版/词级 ins-del/同版提示**→镜像口令→**在线阅览翻页/插图/跨章单页链接/全本/令牌收回**→**架上检索命中章节→直达该节**→**预览开关往返**→**PDF 分节/页眉措辞/文字层/无光栅化/全本**→**馆务台账（对账读数、预演不改盘、确认框可取消、日志按事件筛选）**→**版本台账总表（五分栏口径、两表渲染、行链跳版本清单、按动作筛选、清空筛选）**→页脚出处链接→**凡例「出厂示例」表**；窄屏溢出（含馆务台账、版本台账总表与逐档版本台账三张表）；逐屏截图 | 163/163，控制台零输出、CSP 零违规 |
+| `scripts/pin-guard.mjs` | 静态检查（`prebuild` 里跑，构建前挡人） | 每条依赖声明必须**精确 pin**（无 `^`/`~`/范围符）、实装版本与声明一致、许可落在**宽松白名单**内（唯一例外 ckeditor5 的 GPL、以及 dompurify 的 MPL/Apache 双许可）、每个包都有"一句话用途"与可回指出处、同一包不得在两个工作区各装一份 | PASS（19 条声明 / 17 个运行时依赖） |
 
 另有 `browser-probe.mjs`（主线程阻塞与关键节点计数）、`cpu-probe.mjs`，以及 terra-faction-ui 的
-`audit-faction-ui.mjs`（49 文件 PASS）与 `audit-palette-separation.mjs`（12 家族色域互斥，最近对 lungmen/yan field ΔE 14.9）。
+`audit-faction-ui.mjs`（52 文件 PASS）与 `audit-palette-separation.mjs`（12 家族色域互斥，最近对 lungmen/yan field ΔE 14.9）。
 
-**复跑顺序（务必串行）**
+**交付侧还有两件**（不属于"证明功能对"，属于"证明装得上、跑得起来"）：
+
+| 脚本 | 作用 | 为什么这么设计 |
+| --- | --- | --- |
+| `scripts/make-nginx-package.mjs` | 打"解压即上 Nginx"的部署包（`web/dist/` + `api/` + `nginx/` + `ops/` + `docs/` + `MANIFEST.md` + `SHA256SUMS.txt`） | **默认预演**，`--write` 才落盘、`--zip` 才压缩。核心是安全边界：`data/.secret`（会话与全部签名的主密钥）、`sessions.json`（活会话）、`security.log*`（含来源 IP 的审计流水）、`login-attempts.json`（锁定计数）**一律挡在包外**并逐条打印（`.pnpm/node_modules/server` 那条自指软链按路径挡，它会把整个开发 `server/` 灌进包）。`api/` 每次**现做**（内部跑 `pnpm --filter server deploy --legacy --prod`），不留可复用的旧快照（A-6 的成因就是复用了修复前的 deploy 产物）；包内 `api/` 自己重跑一次 `reseed`，所以出厂态不是开发残局。`web/dist/` 含编译后的 CKEditor，因此随包带 `LICENSE-NOTE.txt` + `COPYING.GPL` |
+| `ops-extras/verify-deploy.mjs` | 部署后验收（对**已上线的入口**跑，不碰仓库） | 默认只读；`--mutate` 才走"建档→修订→比对→置顶→删除"且自清。判定分三档：**FAIL**＝不通、**WARN**＝只在生产才要求（CSP）、**INFO**＝只有经 Nginx 才成立（`/assets/` 的 immutable），后两档不判红——否则会逼人把只读探针当故障单 |
+
+这两件都是被踩坑逼出来的（F-15：把 Nginx 的职责算到 Node 头上、在首页判只该给接口下发的 robots 头、
+按"我以为的响应形状"写结构断言，三种都会造成永远红的假故障；F-16：审计是 120ms 缓冲落盘的，
+做完动作立刻读台账会读到空）。
+
+**复跑顺序（务必串行，F-6）**
 
 ```bash
+node scripts/pin-guard.mjs       # 依赖守卫：不绿就别往下走
+pnpm seed                        # 取确定基线（走查依赖固定次序，见下）
 chrome --headless=new --remote-debugging-port=9223 about:blank   # 走查用
-pnpm dev                       # 或 pnpm start（8787）
-node scripts/api-smoke.mjs     # 31
-node scripts/full-sweep.mjs    # 149（自带隔离数据目录，跑完清理）
-node scripts/walkthrough.mjs   # 119（每轮先 reseed 取确定基线，改过的顺序/菜单/置顶会复位）
-pnpm build                     # 许可登记表再生 + 分包
+BW_WRITE_LIMIT_PER_MIN=300 pnpm dev      # 或 pnpm start（8787，伺服 web/dist）；300 只为自检放行（E-9），产品默认仍是 40
+node scripts/api-smoke.mjs       # 48
+node scripts/full-sweep.mjs      # 218（自带隔离数据目录，跑完清理）
+node scripts/walkthrough.mjs     # 163（每轮先 seed 取确定基线，改过的顺序/菜单/置顶会复位）
+pnpm audit:ui                    # Yan 契约审计
+pnpm build                       # 许可登记表再生 → 依赖守卫 → 分包
+node scripts/make-nginx-package.mjs --write --zip   # 出包：api/ 现做、包内重播、扫净后压缩
+# 解压回环（出包后必做，换到另一个目录、且路径以 . 开头）：
+#   Expand-Archive 到 .scratch-*/  →  cd .scratch-*/bianwang-<版本>-nginx/api && NODE_ENV=production node src/index.js
+#   node ops/verify-deploy.mjs http://127.0.0.1:<端口> --expect-prod              # 26 项只读
+#   node ops/verify-deploy.mjs http://127.0.0.1:<端口> --expect-prod --mutate --user admin --pass '出厂口令'  # 36 项含写链路
 ```
 
 **判绿的标准**：除了"失败 0 项"，还要看 ① 构建日志 `grep -c ERROR` 为 0 且产物存在；
-② 走查尾部是"（无控制台输出）"；③ 新增断言要能**因真实原因**通过——把被测行为故意改坏一次，看它是否变红。
+② 走查尾部是"（无控制台输出）"；③ 新增断言要能**因真实原因**通过——把被测行为故意改坏一次，看它是否变红
+（本轮因此暴露了 F-13 的四条口径错位）；④ 断言旁边打印实测值，不看"布尔真" alone。
+
+### 8.1 依赖升级窗口（CKEditor 5 与 pdfjs-dist 的 SOP）
+
+`ckeditor5`（大版本改过转换与选区 API 两轮，§六 C-3/C-4）与 `pdfjs-dist`（v6 删了 `destroy()`，§六 D-9）
+都属于"升级即破"的库，且本站对两者都做了**超出常规用法的改造**（自定义插件 + 服务端渲染）。
+所有生产依赖已精确 pin，所以升级是一次**显式动作**，不会被 `pnpm install` 悄悄带上去。
+
+**窗口流程（照做，别跳步）**
+
+1. **先立基线**：`git status` 干净、三套脚本刚全绿、`pnpm seed` 后跑一轮走查留截图；记下当前版本。
+2. **只读 release notes 与 breaking changes**：CKEditor 5 的 `CHANGELOG.md`（重点：`model.Selection`、
+   `editor.model.change`、`editor.conversion`、toolbar item 注册）、pdfjs 的 `CHANGELOG.md`（重点：`getDocument` 参数、
+   `loadingTask` 生命周期、`getTextContent` 返回形状）。**不要**先升再试。
+3. **单独开一次只升一个库**的尝试（两个一起升出错无法归因）。改 `package.json` 里的精确版本号 → `pnpm install`。
+4. **按顺序跑四道闸**：`node scripts/pin-guard.mjs`（许可/用途是否还成立）→
+   `pnpm build`（CKEditor 的 GPL 例外登记是否还准确；`licenseKey` 是否仍是 `'GPL'` 档）→
+   `node scripts/api-smoke.mjs` + `node scripts/full-sweep.mjs`（净化白名单、PDF 边界、`doc.destroy` 类运行期炸点）→
+   `node scripts/walkthrough.mjs`（**只有浏览器能验的**：四枚按钮的 `ck-disabled` 态、选区、tooltip 中文前缀、
+   CSP 零违规、PDF 无 `canvas`）。
+5. **看走查的控制台输出**：CKEditor 的破坏性变更多半表现为"编辑器一片空白且**没有报错**"（§六 C-1 同族），
+   因此要额外确认 `document.querySelectorAll('.ck-editor').length === 2` 与四枚按钮可点。
+6. **升级成功后**：把新版本写进 §3.1 表格、`README.md` 与 `THIRD_PARTY_NOTICES.md`，
+   并在 `gen-license-manifest.mjs` 的 `PURPOSE`/`SPDX_FIX` 里核对许可声明是否变了
+   （CKEditor 从"伞包 + 免费档"变成别的授权形态时，`SPDX_FIX['SEE LICENSE IN LICENSE.md']` 这条映射必须重审）。
+7. **升级失败要能一键退**：只回退 `package.json` 的那一行 + `pnpm install`，**不要**顺带改业务代码去"绕过"新 API——
+   绕过会让下一次升级更难。留在原版本的风险记进 §七。
+
+**不做的升级**：`vite`/`vue`/`express` 这类栈底库只在需要新能力时才动，动前同样走 1\~5；
+纯安全补丁（如 dompurify/sanitize-html 的 XSS 修复）**优先**，因为它们替我们挡的是真实输入。
 
 ---
 
@@ -440,16 +782,27 @@ pnpm build                     # 许可登记表再生 + 分包
 | 11 在线阅览 | ZIP 定点读、spine 分页、10MB 硬阈值、图片门控、SPA 翻页 | D-1\~D-8；Nginx 频控会掐翻页 |
 | 12 页脚出处 | 每行框架带官网/GitHub 链接（实测取自包声明）+ 一句话用途 | D-1（repository 简写）、C-10（rel 被白名单剥掉） |
 | 13 出厂示例 | 每个功能配一份可删可改实体：演示链接改指保留域、`demo` 示例馆员、站内路径资源、五章演示册、`/about` 示例清单 | 会话断言从未带会话（F-11） |
+| 14 镜像站检索 + PDF 阅览 + 预览白名单 | 架上元数据/章节标题检索、`pdfRead`（书签分节 + 文字层）、逐本勾选 `previewable`、第三本演示册是自产带书签 PDF | pdfjs v6 删了 `destroy()`（D-9）、白名单默认关挡住既有断言（§六 D-10 同族） |
+| 15 版本台账与馆务台账 | 逐版完整快照 + 词级比对视图、媒体三方对账 + 点名清理、`security.log` 聚合与信号、`/ops` 页 | 写限流打断自检（E-9）、菜单清单写死（F-12）、CSV 换行造幽灵行（E-8） |
+| 16 选型回头补账 | 按"先找现成仓库"重扫一轮：`diff`/`@rgrove/parse-xml`/`csv-*` 替换三处自研、`pdfjs-dist` 引入、`pin-guard` 精确 pin + 许可白名单 + 用途登记 | 排除现成日志栈与 ZIP 库的理由逐条落档（§三 3.4） |
+| 17 部署硬化与出包 | 打包脚本改为 `api/` **每次现做**（`pnpm deploy --legacy --prod` + 收尾 `CI=true pnpm install` 复位）、修 SPA 兜底在点开头目录下 404、`verify-deploy` 台账断言改"等指定事件到齐"而非"有条数" | `send@1.2.1` 对整条路径做 `containsDotFile()`（A-6）、轮询退出条件太弱致假 PASS（F-17）、`deploy` 目标须为空且无 `--force` |
+| 18 全站版本台账总表 | 在既有 `revisions.json` 上加聚合读端 `GET /api/ops/revisions` + `/ledger` 页（口径/流水/汇总三 pane，按档案与动作筛选），记忆化按数据代次失效，撤档行标 `alive=false` | 需求"各功能都要有视图化管理页与菜单"；逐档页看不出全站体积与孤儿历史（§四 4.9） |
 
 ---
 
 ## 十、待办与可扩展（未做，按性价比排序）
 
-1. **PDF 在线阅览**：需引入渲染器，另做许可与体积评估（当前明确 409）。
-2. **EPUB 矢量与公式**：若要保真，需要一条"受控 SVG 光栅化"或"仅本站可信书目放宽"的路径——不能靠放宽 CSP。
-3. **阅览进度持久化**：目前书签只体现在 URL；可加"上次读到第几章"的本地记忆。
-4. **镜像站检索**：口令解锁后可对包内 `content.opf` 元数据与章节标题做站内检索（正文检索会放大抓取面，需先定策略）。
-5. **档案版本化**：修订只留最新正文 + 审计流水，没有逐版本 diff 视图。
-6. **媒体 GC 可视化**：回收逻辑已有，但缺一个"孤儿文件"清单页。
-7. **可观测性**：`security.log` 是 JSONL，没有聚合视图；量大时建议交给现成日志栈而不是自研面板。
-8. **CKEditor 升级窗口**：48.x 的转换与选区 API 已改过两轮（C-3、C-4），升级前必须先跑 §八 的三套脚本。
+本轮已完成并验证的项从这张表里划掉：**PDF 在线阅览**（§四 4.4b）、**镜像站架上检索**（§四 4.4）、
+**档案版本化与两版比对**（§四 4.7）、**媒体 GC 可视化 + `security.log` 聚合**（§四 4.8，落在 `/ops`）、
+**依赖精确 pin 与许可守卫**（§八 `pin-guard`）。剩下的：
+
+1. **EPUB 矢量与公式**：若要保真，需要一条"受控 SVG 光栅化"或"仅本站可信书目放宽"的路径——**不能**靠放宽 CSP（R-6）。
+2. **阅览进度持久化**：目前书签只体现在 URL；可加"上次读到第几章"的**本地**记忆（`localStorage`，写侧要兜 `setItem` 抛，见 B-4），
+   不要做成服务端状态——那会把"游客可读"变成"每人一份写"。
+3. **PDF 版面复现**：D-11 的代价（扫描件空、版式不复现）若真成问题，方案是客户端 pdf.js 渲染 + 单独评估许可与体积。
+4. **正文级检索**：架上检索目前只到元数据与章节标题。开正文检索等于给已解锁者一个"按关键词批量摘取全书"的放大器（R-9），
+   要先定"能不能命中整段、返回多少上下文、按 IP 记不记审计"。
+5. **台账导出**：版本比对与媒体对账都只能在页内看，缺"导出 CSV/JSON 给外部审计"的一键口（导出即分发，需与 R-3/R-5 一起想）。
+6. **CKEditor 升级窗口**：不是"等升级"，而是**按 §八 8.1 的 SOP 走**——四道闸（pin 守卫 → 构建 → 两套接口自检 → 浏览器走查）
+   任一红就回退，不许为了过测改业务代码去绕新 API。48.x 已改过两轮转换/选区 API（C-3、C-4），下一轮迟早来。
+7. **规模上限**：档案上千本后单文件读写与索引重建变慢（R-8），届时按 README §三 的判据换库，而不是"重建索引"当性能手段。

@@ -37,6 +37,11 @@ const PURPOSE = {
   'sanitize-html': '富文本白名单净化',
   'cookie-parser': '会话 Cookie 解析',
   minisearch: '常驻内存检索索引（BM25+）',
+  'pdfjs-dist': 'PDF 在线阅览（文字层与书签，不做服务端光栅化）',
+  diff: '档案版本比对的词/字级差异',
+  '@rgrove/parse-xml': 'EPUB 的 container/OPF/nav/NCX 严格解析',
+  'csv-parse': '用户名册 CSV 读取（引号与换行转义）',
+  'csv-stringify': '用户名册 CSV 写出',
 };
 
 /** 每个依赖的官方出处：只取包自己声明的 homepage / repository，不手写、不猜测 */

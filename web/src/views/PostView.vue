@@ -236,6 +236,12 @@ function tagLink(tag) {
 
     <!-- 卷尾折叠文书块：承诺区，仅登录可用 -->
     <section class="decision" aria-label="档案操作">
+      <div class="row">
+        <RouterLink class="paper-btn btn-quiet" :to="{ name: 'revisions', params: { id: post.id } }">
+          版本与比对
+        </RouterLink>
+        <span class="micro-label">每一次修订都留了完整快照，可比对任意两版的逐字段差异。</span>
+      </div>
       <template v-if="auth.isAuthed">
         <div class="row">
           <button

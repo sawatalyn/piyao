@@ -124,7 +124,11 @@ const READ_ATTR = {
   q: ['cite'],
 };
 
-const READ_CLASSES = ['epub-jump', 'epub-ext', 'epub-anchor', 'epub-dead-link', 'epub-no-asset', 'epub-chapter'];
+const READ_CLASSES = [
+  'epub-jump', 'epub-ext', 'epub-anchor', 'epub-dead-link', 'epub-no-asset', 'epub-chapter',
+  // PDF 阅览的分页容器：只是排版钩子，不带任何行为
+  'pdf-chapter', 'pdf-page', 'pdf-scan',
+];
 
 const READ_NON_TEXT = [
   'script', 'style', 'textarea', 'option', 'noscript', 'iframe', 'object', 'embed', 'form', 'input', 'button',

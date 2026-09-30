@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { store } from './jsonStore.js';
+import { revisions } from './revisions.js';
 import { sanitizeRichText, sanitizeAnnotations, stripHtml } from '../security/sanitize.js';
 import { vectorIndex } from '../search/vectorIndex.js';
 import { media } from '../security/media.js';
@@ -222,6 +223,7 @@ export const posts = {
       next.items.push(post);
       return next;
     });
+    revisions.record(post, { kind: 'create', user });
     this.syncTags();
     return post;
   },
@@ -246,6 +248,7 @@ export const posts = {
     });
     // 修订中被撤下的图片即刻回收（仍被任何在档档案引用的会被留下）
     reclaimMedia(referencedMedia(previous));
+    revisions.record(updated, { kind: 'update', user });
     this.syncTags();
     return updated;
   },
@@ -315,9 +318,14 @@ export const posts = {
     const scored = this.index().suggestTags(query, tags, limit);
     return scored.length ? scored : tags.filter((t) => t.name.includes(query)).slice(0, limit);
   },
+  /** 全部在档档案引用到的图片 id：媒体台账判断"无人引用"的唯一依据 */
+  referencedIds() {
+    const ids = new Set();
+    for (const post of this.all()) for (const mid of referencedMedia(post)) ids.add(mid);
+    return ids;
+  },
   stats() {
-    const items = this.all();
-    return {
+    const items = this.all();    return {
       total: items.length,
       tagged: new Set(items.flatMap((p) => p.tags || [])).size,
       pinned: items.filter((p) => p.pinned).length,

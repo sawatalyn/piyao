@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { parse } from 'csv-parse/sync';
+import { stringify } from 'csv-stringify/sync';
 import { config } from '../config.js';
 
 /**
@@ -8,7 +10,7 @@ import { config } from '../config.js';
  * 列序：username,password,role,displayName,createdAt
  * 若 BW_HASH_PASSWORDS=1，password 列存放 scrypt 摘要，格式 scrypt$<salt>$<hash>。
  */
-const HEADER = 'username,password,role,displayName,createdAt';
+const COLUMNS = ['username', 'password', 'role', 'displayName', 'createdAt'];
 
 function hashPassword(plain, salt = crypto.randomBytes(16).toString('hex')) {
   const derived = crypto.scryptSync(plain, salt, 32).toString('hex');
@@ -28,55 +30,40 @@ function verifyPassword(plain, stored) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-function parseCsvLine(line) {
-  const out = [];
-  let cur = '';
-  let quoted = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
-    if (quoted) {
-      if (ch === '"' && line[i + 1] === '"') {
-        cur += '"';
-        i += 1;
-      } else if (ch === '"') {
-        quoted = false;
-      } else {
-        cur += ch;
-      }
-    } else if (ch === '"') {
-      quoted = true;
-    } else if (ch === ',') {
-      out.push(cur);
-      cur = '';
-    } else {
-      cur += ch;
-    }
-  }
-  out.push(cur);
-  return out;
-}
-
-const cell = (value) => {
-  const text = String(value ?? '');
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-};
-
+/**
+ * CSV 的读写交给 csv-parse / csv-stringify（MIT、零依赖）。
+ * 自己按行 split 的版本无法表达"字段内含换行"：显示名里一个 \n 就会被读成两行，
+ * 而这一份名册里躺着明文口令——多出一行意味着多出一个可登录身份。
+ */
 function readRows() {
   if (!fs.existsSync(config.paths.users)) return [];
-  return fs
-    .readFileSync(config.paths.users, 'utf8')
-    .split(/\r?\n/)
-    .filter((line) => line.trim() && !line.startsWith(HEADER))
-    .map((line) => {
-      const [username, password, role, displayName, createdAt] = parseCsvLine(line);
-      return { username, password, role, displayName, createdAt };
-    });
+  const records = parse(fs.readFileSync(config.paths.users, 'utf8'), {
+    columns: false,
+    skip_empty_lines: true,
+    relax_column_count: true,
+  });
+  return records
+    // 表头行按整行比对：用户名恰好以 "username," 开头的记录不该被当成表头丢掉
+    .filter((row) => !(row[0] === 'username' && row[1] === 'password'))
+    .map(([username = '', password = '', role = '', displayName = '', createdAt = '']) => ({
+      username,
+      password,
+      role,
+      displayName,
+      createdAt,
+    }))
+    .filter((row) => row.username);
 }
 
 function writeRows(rows) {
-  const body = [HEADER, ...rows.map((r) => [r.username, r.password, r.role, r.displayName, r.createdAt].map(cell).join(','))];
+  const text = stringify(
+    [COLUMNS, ...rows.map((r) => [r.username, r.password, r.role, r.displayName, r.createdAt].map((v) => String(v ?? '')))],
+    // 记录分隔符是 CRLF，而字段里可能只含裸 \n：默认规则不会给它加引号，写出来就是坏 CSV。
+    // 显式把"含分隔符、引号、任一换行"的字段全部括起来。
+    { header: false, record_delimiter: '\r\n', quoted_match: /[",\r\n]/ }
+  );
   fs.mkdirSync(path.dirname(config.paths.users), { recursive: true });
-  fs.writeFileSync(config.paths.users, `${body.join('\r\n')}\r\n`, 'utf8');
+  fs.writeFileSync(config.paths.users, text, 'utf8');
 }
 
 function ensureSeed() {

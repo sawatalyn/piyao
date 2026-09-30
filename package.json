@@ -9,14 +9,20 @@
     "dev:server": "pnpm --filter server dev",
     "dev:web": "pnpm --filter web dev",
     "licenses": "node scripts/gen-license-manifest.mjs",
-    "prebuild": "node scripts/gen-license-manifest.mjs",
+    "guard:deps": "node scripts/pin-guard.mjs",
+    "prebuild": "node scripts/gen-license-manifest.mjs && node scripts/pin-guard.mjs",
     "build": "pnpm --filter web build",
     "smoke": "node scripts/api-smoke.mjs",
     "preview": "pnpm --filter web preview",
     "start": "pnpm --filter server start",
     "seed": "node server/scripts/reseed.js",
     "walkthrough": "node scripts/walkthrough.mjs",
-    "audit:ui": "node C:/Users/52956/.qoder-cn/skills/terra-faction-ui/scripts/audit-faction-ui.mjs web"
+    "audit:ui": "node C:/Users/52956/.qoder-cn/skills/terra-faction-ui/scripts/audit-faction-ui.mjs web",
+    "api:prod": "pnpm --filter server deploy --legacy --prod outputs/package/.api-deploy",
+    "package": "node scripts/make-nginx-package.mjs",
+    "package:write": "node scripts/make-nginx-package.mjs --write",
+    "package:zip": "node scripts/make-nginx-package.mjs --write --zip",
+    "verify:deploy": "node ops-extras/verify-deploy.mjs"
   },
   "engines": {
     "node": ">=20.19.0"

@@ -1,0 +1,28 @@
+[Unit]
+Description=Bianwang rumor-debunk archive API (Node + JSON store)
+After=network.target
+
+[Service]
+Type=simple
+User=bianwang
+Group=bianwang
+EnvironmentFile=/etc/bianwang.env
+# WorkingDirectory 指向包内 api/ 目录（部署包解压后的位置）
+WorkingDirectory=/srv/bianwang/api
+ExecStart=/usr/bin/node src/index.js
+Restart=always
+RestartSec=3
+
+# 只允许写数据目录；其余文件系统视角只读
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/bianwang/api/data
+PrivateTmp=true
+LimitNOFILE=4096
+
+# 后端不需要出站网络；放不出来就别开
+# PrivateNetwork=true
+
+[Install]
+WantedBy=multi-user.target

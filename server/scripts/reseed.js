@@ -3,6 +3,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { encodePng, chartPng } from './png.js';
 import { demoEpub, multiChapterEpub } from './epub.js';
+import { demoPdf } from './pdf.js';
 import { config } from '../src/config.js';
 import { users } from '../src/store/users.js';
 
@@ -192,6 +193,25 @@ const tagCounts = new Map();
 for (const post of items) for (const tag of post.tags) tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
 
 fs.writeFileSync(config.paths.posts, JSON.stringify({ version: 1, items }, null, 2));
+/* 版本台账：每条出厂档案带一版"建档"快照，版本页一打开就有内容可看；真实修订会续加在后面 */
+fs.writeFileSync(
+  config.paths.revisions,
+  JSON.stringify(
+    {
+      version: 1,
+      items: items.map((post, position) => ({
+        id: `rseed${position + 1}`,
+        postId: post.id,
+        kind: 'create',
+        at: post.createdAt,
+        by: post.meta?.editor || '辨妄阁',
+        snapshot: post,
+      })),
+    },
+    null,
+    2
+  )
+);
 fs.writeFileSync(
   config.paths.tags,
   JSON.stringify(
@@ -358,6 +378,7 @@ fs.writeFileSync(config.paths.resources, JSON.stringify({ version: 1, items: res
 /* —— 洛琪希图书馆镜像：演示占位书 + 演示口令（真实馆藏由运维放入 server/data/library/） —— */
 const LIB_FILE = '辨妄阁镜像功能演示占位书.epub';
 const READ_FILE = '辨妄阁分页阅览演示册.epub';
+const PDF_FILE = '辨妄阁PDF阅览演示册.pdf';
 fs.mkdirSync(config.libraryDir, { recursive: true });
 const demoBook = demoEpub({
   title: '辨妄阁镜像功能演示占位书',
@@ -369,6 +390,9 @@ const demoSha = crypto.createHash('sha256').update(demoBook).digest('hex');
 const readBook = multiChapterEpub({ title: '辨妄阁分页阅览演示册', chapters: 5 });
 fs.writeFileSync(path.join(config.libraryDir, READ_FILE), readBook, { mode: 0o640 });
 const readSha = crypto.createHash('sha256').update(readBook).digest('hex');
+const pdfBook = demoPdf({ title: '辨妄阁 PDF 阅览演示册' });
+fs.writeFileSync(path.join(config.libraryDir, PDF_FILE), pdfBook, { mode: 0o640 });
+const pdfSha = crypto.createHash('sha256').update(pdfBook).digest('hex');
 fs.writeFileSync(
   config.paths.library,
   JSON.stringify(
@@ -389,6 +413,8 @@ fs.writeFileSync(
           bytes: demoBook.length,
           sha256: demoSha,
           enabled: true,
+          // 刻意留一本未入白名单的：演示"可下载 ≠ 可预览"，架上只会显示"仅可下载"
+          previewable: false,
           addedBy: 'seed',
           createdAt: iso(0),
         },
@@ -406,6 +432,25 @@ fs.writeFileSync(
           bytes: readBook.length,
           sha256: readSha,
           enabled: true,
+          previewable: true,
+          addedBy: 'seed',
+          createdAt: iso(0),
+        },
+        {
+          id: 'bseed3',
+          title: '辨妄阁 PDF 阅览演示册',
+          author: '辨妄阁',
+          translator: '',
+          group: '演示',
+          note: '三章带书签的自产 PDF，用于演示"书签优先、无书签回退固定页数"的分节阅览；不含任何他人作品。',
+          sourceUrl: 'https://pan.roxylib.com/%E6%B4%9B%E7%90%AA%E5%B8%8C%E5%9B%BE%E4%B9%A6%E9%A6%86%20-%20%E5%80%9F%E4%B9%A6%E6%9F%9C%E5%8F%B0',
+          rights: '自产演示文件，无第三方权利问题。收录他人作品前须自行确认授权。',
+          file: PDF_FILE,
+          type: 'application/pdf',
+          bytes: pdfBook.length,
+          sha256: pdfSha,
+          enabled: true,
+          previewable: true,
           addedBy: 'seed',
           createdAt: iso(0),
         },
@@ -443,6 +488,6 @@ fs.writeFileSync(
 
 console.log(
   `已写入 ${items.length} 条演示档案、${images.length} 张演示图片、${tagCounts.size} 个话题标签、` +
-    `${resourceItems.length} 条资源库条目、2 本自产演示镜像册（含一本五章分页阅览册）、1 条演示口令；` +
-    `示例用户 ${hadDemo ? 'demo 已存在' : '已补入 demo'}；${demoNote}。`
+    `${resourceItems.length} 条资源库条目、3 本自产演示镜像册（一本仅下载 + 一本五章分页阅览 + 一本带书签 PDF）、1 条演示口令；` +
+    `示例用户 ${hadDemo ? 'demo 已存在' : '已补入 demo'}；版本台账按档案数补入 ${items.length} 条建档快照；${demoNote}。`
 );

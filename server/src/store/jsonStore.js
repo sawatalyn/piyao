@@ -65,6 +65,7 @@ function readFromDisk(file, fallback) {
 function configOf(name) {
   const map = {
     posts: { file: config.paths.posts, fallback: { version: 1, items: [] } },
+    revisions: { file: config.paths.revisions, fallback: { version: 1, items: [] } },
     menu: { file: config.paths.menu, fallback: { version: 1, items: [] } },
     tags: { file: config.paths.tags, fallback: { version: 1, items: [] } },
     mediaIndex: { file: config.paths.mediaIndex, fallback: { version: 1, items: [] } },

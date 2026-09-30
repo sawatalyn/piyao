@@ -96,6 +96,8 @@ export const library = {
       bytes: stat.size,
       sha256: await hashFile(target),
       enabled: input.enabled !== false,
+      // 预览白名单：默认关，登记时由馆员逐本勾选；下架(enabled=false)不影响该标记
+      previewable: input.previewable === true,
       addedBy: user?.username || 'unknown',
       createdAt: new Date().toISOString(),
     };
@@ -123,6 +125,7 @@ export const library = {
           : '',
         rights: String(input.rights ?? previous.rights).trim().slice(0, 200),
         enabled: input.enabled !== false,
+        previewable: input.previewable === undefined ? previous.previewable === true : input.previewable === true,
         updatedAt: new Date().toISOString(),
       };
       if (!updated.title) throw Object.assign(new Error('书名不可为空'), { status: 400 });
