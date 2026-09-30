@@ -18,14 +18,15 @@
 | 视觉 | terra-faction-ui 的 **Yan（炎国 archival）阵营语法 · 最高规格（maximal）**，根属性 `data-terra-faction="yan-archival"` |
 | 安全 | 严格 CSP（无 `unsafe-inline`）、CSRF 双提交、登录与验印双维度锁定、HMAC 短时效直链、反爬 UA 门槛、5MB 单图上限 |
 | 台账 | 档案逐版快照与词级比对（`diff@9` BSD-3-Clause）、媒体三方对账与点名清理、`security.log` 聚合视图 |
-| 本轮验证 | 接口 48/48 · 全量 218/218 · 浏览器走查 165/165（控制台零输出、CSP 零违规）· Yan 契约审计 52 文件无告警 · 色域审计 PASS |
+| 本轮验证 | 接口 48/48 · 全量 218/218 · 浏览器走查 165/165（控制台零输出、CSP 零违规）· Yan 契约审计 52 文件无告警 · 色域审计 PASS · 出包四道硬闸（软链接 0 · 孤立自足性 started+200 · 批处理 CRLF+ASCII · 依赖守卫 PASS） |
+| Windows 交付 | 自带 csc 现编的 WinForms 仪表盘（`dashboard/`，零新增依赖）+ 一键安装包（`installer/` 七个 `.cmd` 与一个 `.ps1`：环境/部署/自启/卸载），只用系统自带工具，脚本一律 CRLF + 纯 ASCII；全流程已在 Windows 11 上实跑（含分支与拒绝路径），唯 `ONSTART`+`SYSTEM` 注册因客户端策略被拒而**未正面验证**（A-15 / R-15） |
 | 交付纪律 | 只采纳宽松许可（MIT/Apache/BSD/ISC/CC0）代码；**唯一 copyleft 例外是 CKEditor 5，按用户明确指定引入并单独核实**；不打包任何官方标识、美术、CDN 素材；**选型一律"先找现成开源、核实许可、再决定自研"**（§三 3.4） |
 
 ---
 
 ## 一、需求总览与落地对照
 
-原始需求按主题拆成 12 组，逐组给出落点与验证锚点。**状态**一列诚实区分"已实现并验证"与"刻意不做"。
+原始需求按主题拆成 12 组（R1–R12），后续追加 10 项（R13–R22），逐组给出落点与验证锚点。**状态**一列诚实区分"已实现并验证"与"刻意不做"。
 
 | # | 需求 | 落地 | 状态 |
 | --- | --- | --- | --- |
@@ -49,6 +50,8 @@
 | R18 | （追加）**档案版本化**：逐版本完整快照 + 任选两版比对 | `store/revisions.js`（14 个可比字段、正文词级 diff）+ `/post/:id/revisions`（`RevisionsView.vue`） | ✅ 保留版数由 `BW_REVISION_KEEP` 控制（默认 30） |
 | R19 | （追加）**媒体 GC 可视化** + **`security.log` 可观测性** | `store/mediaInventory.js`（磁盘/索引/在档引用三方对账 + 点名清理）+ `security/logInsight.js`（聚合与信号）+ `/ops`（`OpsView.vue`） | ✅ 清理**默认预演**，`confirm` 才动手；日志不引第三方栈（理由见 §三 3.5） |
 | R20 | （追加）**预览白名单**：不是登记在册的书都能在线读 | `library.json` 的 `previewable`（登记时逐个勾选、管理面可开关）→ 未勾选者阅览 403 `preview-off` | ✅ 架上入口与管理面行状态同步 |
+| R21 | （追加）Windows **图形仪表盘**：可开机自启或 exe 启动；启动时每次都要 GUI 填端口；协助检查/安装/更新运行环境 | `dashboard/Dashboard.cs`（自带 csc 现编的 WinForms，零新增依赖）+ `build/install/uninstall.cmd` | ✅ 手动/自启/环境体检三条路径实跑（§四 4.10）；"每次填端口"与"开机自启"冲突的取舍已写成口径 |
+| R22 | （追加）**一键部署安装包**四件事：① 监测/安装/更新运行环境 ② 部署含仪表盘的完整程序（遵守启动时向根目录导出口令.txt）③ 一键卸载 ④ 一键部署开机自启 | `installer/`：`setup.cmd` 编排 + `env.cmd` / `deploy.cmd` / `autostart.cmd` + `run-site.cmd` / `creds.cmd` + `creds.ps1` / `uninstall.cmd`（§四 4.11，用法见 `USAGE.md` §10） | ⚠️ ①②③④ 全流程已在 Windows 11 上实跑（含两条分支与三条拒绝分支，见 §九 第 23 阶段）；**唯 ④ 的 `ONSTART`+`SYSTEM` 注册成功那一条未验证**——本机提权后 `schtasks` 仍被策略拒绝（A-15 / R-15） |
 
 **刻意不做的三件事**（避免把"备份镜像站"做成侵权分发站）：
 1. 不代抓网盘、不下载小说/EPUB/翻译稿/漫画扫描，不绕过百度盘与登录门槛；镜像只伺服馆员自行放入 `server/data/library/` 的文件。
@@ -468,6 +471,67 @@ Python + Tkinter 等于引入第二个运行环境，用户机器上有 Python �
 
 ---
 
+### 4.11 Windows 一键安装包（`installer/`：环境 · 部署 · 自启 · 卸载）
+
+4.10 交付的是"一台已经能跑的机器上的图形起停"，本轮要补的是**一台干净的机器**：
+用户提的四条能力——① 一键监测/安装/更新运行环境，② 部署含仪表盘的完整程序且遵守"启动时向根目录导出口令.txt"，
+③ 一键卸载，④ 一键部署开机自启。
+
+**为什么不做成一个 exe，而是一组 `.cmd`**：`dashboard/` 已经有 C# 现编的图形面板了，
+这一层的活儿是**编排系统工具**（`winget`、`robocopy`、`schtasks`、`reg`、`PowerShell`），
+批处理是这些工具唯一在 Windows 10 与 Server 2019 上都零成本可用的胶水；
+换成任何第三方 installer 框架都会立刻撞上"只收宽松许可"那条铁律（见 §3.4 的选型顺序）。
+唯一的例外是**打开中文命名的口令文件**——那件事批处理做不到（A-9 第 4 条：cmd 按 OEM 代码页读脚本），
+所以拆成 `creds.cmd`（薄壳，只传退出码）+ `creds.ps1`（按码点拼出文件名）。
+
+**能力④的两条需求是分开实现的**（用户在 AskUserQuestion 里指定的口径："后端开机即起 + 仪表盘登录即起"）：
+
+| 任务 | 触发 | 身份 | 为什么单独一条 |
+| --- | --- | --- | --- |
+| `BianwangSite` | `ONSTART` | `SYSTEM` / `rl highest` | Server 上做内网服务要"没人登录也可达"；这条**必须提权**才能注册 |
+| `BianwangDashboard` | `ONLOGON` | 交互用户 | 图形界面只能活在有会话的时候；它先探端口，已 Serving 就退让，不会起第二个后端 |
+
+**提权探测**用 `net session` 的退出码，而不是"试着建任务看会不会失败"——后者失败的原因可能是权限、
+也可能是路径或任务名冲突，脚本给不出人话。非提权时 `setup.cmd` **警告并继续**跑完①②，
+只有③这一步要求重开窗口，因为半权限注册出来的开机任务会在最需要它的时刻静默不跑。
+
+**`run-site.cmd`（任务真正执行的脚本）的端口取值链**：`installer\port.txt` → 仪表盘的
+`%LOCALAPPDATA%\Bianwang\dashboard.cfg` → **没有就拒绝启动并写日志**。
+这是 §4.10 那条"不猜端口"的取舍在无人值守路径上的延伸，且比手动启动更要紧——
+开机时没有人能纠正一个猜错的端口。取值之后先探一次端口，已有进程在服务就正常退（幂等，避免每次开机多留一个孤儿）。
+后端按既有行为（§九 第 19 阶段加的口令速查文件）在首次启动时把 `口令.txt` 写到站点根目录，所以安装包**不设 `BW_DATA_DIR`**，
+让根目录口径和源码运行保持一致；口令文件因此天然在部署产物之外，卸载连带删掉。
+
+**能力③的口径是"全部删除，含 `api\data`"**（用户明确选择）：档案、图片、书库、口令 CSV 一起走，
+所以它要求打出 `DELETE` 才动手，并先给一次"删前拷一份 `api\data`"的机会（只拷、从不删那份拷贝）。
+实现细节与那条"自己删自己的脚本"的成因记在 **A-13**。
+
+**三条边界从 §4.10 继承下来，没有放宽**：
+① **不静默往机器上装软件**——检测免费，安装必须有 `/install` 开关且由 `setup.cmd` 问过才加；
+winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略/离线）时退回"打印官方地址并替你打开浏览器"，这条路仍然走得通，只是改由人点；
+② **不信 PATH 报告的成功**——winget 装完直接去 `%ProgramFiles%\nodejs\node.exe` 找，因为新装的 Node 不在当前控制台的 PATH 里；
+③ **包里不预置二进制**——`deploy.cmd` 拷完 `dashboard/` 源码后在目标机调 `build.cmd` 现编，与 A-6/A-11 同一条理由；
+编不出来只警告，站点本身与 .NET 无关。
+另外两条是本轮新加的防线：`deploy.cmd` 要求旁边就有 `api\src\index.js`（**拒绝在源码仓库里跑**，那里没有解析好的依赖），
+并把 `api\data` 用 `/XD` 排除在拷贝之外——**`api\data` 只要站点跑过一次就是用户数据**，升级重部署绝不冲掉。
+
+**实跑状态要如实分开记**（本机 Windows 11 专业版，ProductType 1，非服务器 SKU）：
+① 环境——正常态 rc 0，另把版本闸门临时抬到 `>=99` 逼出"太旧"分支（rc 2）与"本机没有 winget"的退回指引（rc 3，实测确实只开网页不动系统）；
+② 部署——真包解压到**仓库树外**后部署，robocopy 七个目录、目标机现编出 exe、起站后
+`/` 回 200（1193 字节、含 `#app`）与 `/api/menu` 回 200（11 项）、`口令.txt` 确实落在**站点根**；
+三条拒绝分支也各自跑过：源码仓库里跑 `deploy.cmd` → rc 1，包拷到自身 → rc 6，没有任何端口记录 → rc 2（**不猜端口**）；
+③ 自启——`/status` 非提权可用；端口占用时 `run-site.cmd` 报"already serving"并 rc 0（幂等）；
+**降级路径**（开机任务被拒 → 仍注册登录任务 → 直接拉起 → 探到端口 → rc 4）实跑通过；
+④ 卸载——`/quiet` rc 0 且文件全留，`DELETE` 全删 rc 0 且自清 `%TEMP%` 副本，数据计数走 PowerShell 得 18 files / 0.1 MB；
+`creds` 三态修正后为 存在 0 / 目录在但没文件 2 / 目录读不到 1。
+
+**唯一仍未正面验证的是 `ONSTART` + `/ru SYSTEM` 注册成功那一条**：本机即便提权（`net session` 通过、
+`whoami` 是管理员账户）也被任务计划程序拒绝授予 SYSTEM 身份（A-15），换真正的 Windows 10 / Server 2019 才能验（R-15）。
+这轮补验本身抓到并修掉两个真 bug：`creds.cmd /root` 对读不到的目录打印 `[ok] found` 且返回 0（A-14），
+以及开机任务被拒时把"本来还能成"的登录任务与起站一起放弃（A-15）。
+
+---
+
 ## 五、决策记录（ADR 摘要）
 
 | # | 决策 | 备选项 | 取舍依据 |
@@ -486,6 +550,7 @@ Python + Tkinter 等于引入第二个运行环境，用户机器上有 Python �
 | D-12 | 版本台账存**完整快照**，只留最近 N 版 | 存 diff 补丁 / 无限留档 | 快照让"任选两版比对"成为 O(1) 取值而不是回放补丁链；体积风险改用"保留数 + 清单不带正文 + 按需拉两版"封顶（R-13） |
 | D-13 | 日志聚合自研约 150 行，**不引第三方日志栈** | pino+pino-roll（MIT）/ Loki、Grafana、Tempo（AGPL-3.0）/ Graylog（NOASSERTION）/ Vector（MPL-2.0） | 许可实测与取舍逐条记在 §三 3.4；`audit()` 只有一个写点、事件名与字段已是稳定契约，将来换 transport 不动业务代码 |
 | D-14 | 生产依赖全部精确 pin，并用 `pin-guard` 在 `prebuild` 挡人 | 保留 `^` 范围符 + lockfile | 交付物是"解压即上 Nginx"的包，重装拿到不同版本不可接受；CKEditor 与 pdfjs 都是"大版本换 API"的库（C-3、D-9）。守卫顺带核许可白名单与用途登记 |
+| D-15 | **发布只给两种形态：一键安装包 + 源码**（release 不再摆裸 `web/dist` 压缩包与单个 exe） | 三种资产并存（部署包 + `nginx-html-webdist.zip` + `BianwangDashboard.exe`）/ 只发源码 | 部署包**已经**含仪表盘源码与 `installer/`，再单摆一个 exe 等于同一东西两个出处，还违背"不预置二进制"（A-6/A-11：预置产物会带着改之前的旧快照被分发出去）；`nginx-html-webdist.zip` 是"只要静态页"的第三种人设，而本站后端本来就读 `web/dist` 自伺服，拆出来反而诱导人只拷前端、得到一套没有接口的页面。两类各覆盖一种人：**要跑起来** → 一键安装包；**要读代码或自己构建** → 源码 |
 
 ---
 
@@ -558,6 +623,81 @@ Python + Tkinter 等于引入第二个运行环境，用户机器上有 Python �
   ESM 的裸模块名是按**发起 import 的文件位置**逐级向上找 `node_modules`，与进程 cwd 无关；
   必须把探针落在 `server/` 目录内（跑完即删，并加进 `.gitignore` 与打包 FORBIDDEN）。
   教训：**"能不能跑"只能靠真跑一次来判定**；目录在不在、文件多不多都是代理指标，代理指标在换机时最先失真。
+
+- **A-11 部署包自己就是坏的：`pnpm deploy` 的默认链接器 + 复制时解引用，加上一个"在仓库树里验"的假通过**（A-10 的真正源头，公开发布后才被用户撞出来）：
+  包里的 `api/node_modules` 是用**默认 isolated 链接器** deploy 出来、再被 `fs.cpSync(..., {dereference:true})` 压平的。
+  deploy 产物里每个包只是**指向根农场的一条软链接**，解引用只把"那个包自己的文件"变成实体，
+  它靠链接器布局才能找到的**兄弟依赖**（`express-rate-limit` 需要的 `ip-address`）压根没进包——
+  而且 Node 要走到 **import 阶段**才报，所以文件的个数、体积、`require.resolve` 的静态检查全都好看。
+  更要命的是**验收方法本身是错的**：解压回环跑在仓库树里的 `.scratch-*` 下，
+  ESM 按**发起 import 的文件位置**逐级向上找 `node_modules`，仓库根那套完整的农场正好是它的祖先，
+  于是**缺包被静默兜住、假通过**。换到用户机器上（`C:\...` 树里没有任何根 `node_modules`）才炸。
+  修法（三条一起做，缺一条就会复发）：
+  ① deploy 改成 `pnpm --filter server deploy --legacy --prod --config.node-linker=hoisted`，
+  依赖**平铺成实体目录**（不加 `--legacy` 在 pnpm ≥10 直接 `ERR_PNPM_DEPLOY_NONINJECTED_WORKSPACE`）；
+  ② 出包脚本加**两条硬校验**：包内 `api/node_modules` 软链接条数必须为 0；
+  ③ 加**孤立自足性 gate**——把 `api/` 拷进 `%TEMP%` 下真起一次后端并请求 `/api/menu`，
+  且 gate 在拷之前**先逐级扫祖先目录**，只要路上有 `node_modules` 就拒绝出包（否则又是在树里验，白验）。
+  教训：**"验证环境比目标环境更宽容"的测试等于没有测试**；隔离性必须由测试自己去证明，而不是靠"我换了个目录"。
+
+- **A-12 cmd.exe 批处理的六条语法定律，每条都是一次实跑换来的**（写 `installer/*.cmd` 时逐条撞上）：
+  1. **括号块里 `echo` 未转义的 `(` `)`** 会让 cmd 打印"此时不应有 re-run。"并当场终止——
+     它不是警告，是把整条部署流程停在编译仪表盘那一步。所有 `echo` 里的括号写成 `^(` `^)`。
+  2. **`setlocal enabledelayedexpansion` 之下 `!` 是不可打印字符**。
+     试过 `[!]`（打成 `[]`）、`[^!]`（打成 `[\]`）、`%BANG%`（空）、`!BANG!`（空）四条路，**没有任何转义能输出它**。
+     12 处警告标记统一换成 `[-]`。
+  3. **`shift` 会轮转 `%0`**，所以参数循环之后 `%~dp0` 不再是脚本目录，而是**最后一次 shift 掉的那个参数**——
+     实测把 `creds.ps1` 解析成了 `C:\Program Files\Git\creds.ps1`。修法：脚本第 3 行先 `set "SELF=%~dp0"`，循环后一律用 `%SELF%`。
+  4. **标签（`:label`）不能定义在括号块内**。端口校验那一段原来写在 `if (...)` 里，直接语法不通过；
+     只能提到顶层做成 `:portask` / `:portknown` 两个入口。
+  5. **PowerShell 的 `>` 写的是 UTF-16**，cmd 的 `set /p` 读回来是空串。
+     凡是"让 PowerShell 把结论交给批处理"的地方，改成**用退出码传话**（`exit 0/1/10/11`），文件只留给 `robocopy` 之类自己读。
+  6. **Git for Windows 的 `find.exe` 会抢掉 `find`**（`where find` 实测确认）。
+     `dir | find /c /v ""` 在 PATH 前置 Git 的机器上拿到的是 GNU find 的胡话计数。
+     需要统计时用 PowerShell（`@(Get-ChildItem -Recurse -File)` + `Measure-Object`），别用 `find`/`more` 这类同名冲突件。
+  教训：**批处理没有"报错"，只有"行为不对"**——六条里有四条是静默产出错值继续往下跑。写完每个脚本要用真 cmd 跑，不能只看代码。
+
+- **A-13 自己删自己的批处理读不到自己的后半段**（`uninstall.cmd` 首版"删成功了却报失败"）：
+  cmd.exe 是**逐行懒读**磁盘上的脚本文本。脚本平时住在 `<site>\installer`，也就是它即将删掉的那棵树里——
+  `rd /s /q` 成功之后，它的后续行所在文件已经没了，于是每条余下语句都打成"系统找不到指定的路径"，
+  连"验证删除成功"那行都被吞掉，最终**返回码 1**。目录确实删干净了，报告却全是错。
+  试过的两种"看起来能修"的写法都不行：把后续语句用 `&` 拼成一行**仍然会回去读盘**；
+  用 `cmd /c` 起子进程删也不行——**父进程自己的 cwd 还在那棵树里**，Windows 拒绝删除有进程坐在其中的目录。
+  最终形态：启动器把自身 `copy` 到 `%TEMP%`（树外），用 `start "" /wait` 交出删除与结论，
+  并在交接前 `cd /d "%SYSTEMROOT%"` 跳出树；`/quiet` 那条**不删文件**，所以留在原地内联跑，好保留有意义的退出码。
+  配套的两条判据修正：`del` 对**从未存在**的路径也报成功、`rd` 对**只删了一半**的树也报成功，
+  所以结论一律改成 `if exist` 直接看（快捷方式先探在不在再宣布删除，卸载先判 `%ROOT%` 是否还在）。
+  顺带一个反向坑：**提权检查不能挡住只读操作**——`autostart.cmd /status` 原来排在 `net session` 闸门之后，
+  非管理员连"看现在注册了什么"都做不了；无害动作要提到闸门前面。
+  教训：**删除类的结论只能由"再看一眼"得出**；一个住在被删对象内部的脚本，它的自述不可信。
+
+- **A-14 "找不到就报错"的检查本身会撒谎**（`creds.cmd /root` 实跑时抓到）：
+  两层叠在一起才成为 bug。① `powershell -File` **不会**剥掉参数上的引号，
+  所以批处理传的 `-Root "C:\site"` 到 PowerShell 手里是字面量 `"C:\site"`（带引号），
+  `Resolve-Path` 报"找不到路径"；② 更糟的是 `Resolve-Path` 失败是**非终止错误**，
+  裸 `try { } catch { }` 抓不住它——红字打印完继续往下走，`$resolved` 还是 `$null`，
+  于是 `Join-Path`/`Test-Path`/`Get-Item` 连着报四个"参数为空值"，脚本却一路走到
+  `Write-Host '[ok] found'` 并 **exit 0**。一个读不到目录的调用，交回来的答案是"成功"。
+  修法：`Resolve-Path -ErrorAction Stop`（让 catch 真的 catch）+ 显式判空 + 根目录改用**环境变量**过桥
+  （`BW_SITE_ROOT`），因为环境变量不经过任何引号解析层。三态重新实测：存在 → rc 0、
+  目录在但没有该文件 → rc 2、目录读不到 → rc 1。
+  教训：**跨进程边界传值，"能报错"不等于"会被拦住"**；非终止错误 + 空值继续执行是 PowerShell 最常见的静默失败形状，
+  而调用方只看退出码时，它伪装得和成功一模一样（与 F-13 同族：PASS 必须因真实原因通过）。
+
+- **A-15 提权了也建不出 SYSTEM 任务，脚本却已经把整条自启判成失败**（补验 ONSTART 时撞到）：
+  在 Windows 11 专业版（ProductType 1）上，即便 `net session` 通过（确认已提权），
+  `schtasks /create /sc onstart /ru SYSTEM /rl highest` 仍然返回**拒绝访问**——
+  客户端 SKU 的"作为批处理登录/作为服务登录"策略不让普通管理员令牌把任务切到 SYSTEM 身份，
+  而任务计划程序不会说明是哪一条拦的。
+  旧逻辑在这里直接 `exit /b 4`，于是**仪表盘那个登录任务也不注册了**，而且站点没起、
+  操作员只看到一句"could not create the boot task"，分不清"你的自启全废了"和"只是开机那半废了"。
+  修法：把失败降级成**分支而不是终点**——记下 `SITE_FAILED`，继续注册 ONLOGON 任务，
+  然后**绕开调度器直接把站点拉起来**（`start "" /b`，因为 `run-site.cmd` 会占住控制台），
+  再照旧探端口确认，最后才以 rc 4 退出。实测：`/port 16077` → 打印拒绝原因与"重启后不会自愈"的明示 →
+  `[ok] site is up on http://127.0.0.1:16077`，`/api/menu` 与 `/` 都回 200，`口令.txt` 照样落在站点根。
+  顺带把这条机器差异写进 `USAGE.md` §10.3（Server 2019 是 ProductType 2，那条路 normally 通，但**仍未实跑**）。
+  教训：**一项能力失败时，不要把还没失败的能力一起撤掉**；降级路径要把"还剩什么、缺什么"说清，
+  否则用户只能靠猜来决定要不要换台机器。
 
 ### B · Vue 与前端
 
@@ -742,6 +882,15 @@ Python + Tkinter 等于引入第二个运行环境，用户机器上有 Python �
   PASS 依赖的是运气而不是条件，这正是 F-13 说的"因真实原因通过"没做到。
   修法：轮询要等**两类事件都到齐**（`/login/` 与 `/post-/` 各命中一次）才收，超时上限放宽到 5s；
   并把 `byEvent` 全量打进 detail，让"到底等到几条、等成了什么"在报告里看得见。
+- **F-18 "解压回环"在仓库树里跑，等于没测**（A-11 的方法论那一半，也是本项目最贵的一次假绿）：
+  验收步骤是"把包解压到别处再起来打一次接口"，我照做了——解压到仓库内的 `.scratch-loop-*`。
+  仓库根的 `node_modules/.pnpm/` 正好是它的祖先目录，ESM 逐级向上查找时**静默兜住了包内缺失的兄弟依赖**，
+  于是"缺 `ip-address`"的包在我机器上每一次都绿，发到 GitHub 后在用户的远程机上炸。
+  修法不是"下次记得解压到外面"，而是**把前提变成断言**：出包 gate 在拷贝之前逐级扫 `%TEMP%` 的祖先链，
+  路上只要有 `node_modules` 就**拒绝出包**并指名那个目录；通过之后还要同时满足
+  "进程打印启动横幅 + `GET /api/menu` 返回 200 + 条目数 > 0"三条，不看"没报错"。
+  教训：**验证环境必须比目标环境更苛刻，或者至少证明自己不更宽容**；
+  任何"换了个目录"的隔离性都要由脚本自己核实，不能由我的记忆保证（同 F-13：PASS 要因真实原因通过）。
 
 ---
 
@@ -760,6 +909,7 @@ Python + Tkinter 等于引入第二个运行环境，用户机器上有 Python �
 | R-7 | **PDF 阅览只走文字层** | `pdfRead.js` 取 `getTextContent()` + `getOutline()`，服务端**不渲染像素** | 扫描件（无文字层）在阅览页是空的；版面/字体/图位不复现 | 页面明示"仅取文字层，版式请下载原文件核对"；无书签的 PDF 退化全本一次给出；未入白名单的书根本进不来 | 需要版面复现或读扫描件时**另起方案**（客户端渲染或受控光栅化），先做 CPU 与许可评估 |
 | R-13 | **版本台账会吃磁盘** | 每次修订存**完整快照**，每档保留 `BW_REVISION_KEEP`（默认 30）版 | 档案多、修订频繁时 `revisions.json` 体积线性上涨；快照里含正文与批注 | 保留数可配、清单接口不返回快照正文、比对按需拉两版 | 上线后定期看 `/ops` 的台账体积；真要长期留档应导出到备份，而不是靠保留数调大 |
 | R-14 | **删档不抹历史，但也不补记** | 撤档时不新增版本，已存快照原样留着 | 台账里会出现"档案已不在、历史仍在"的行（页面已明写提示） | 这是**审计取向**的刻意设计；要连历史一起清就得手工动 `revisions.json` | 涉及"依法删除"类请求时，须同时处理 `revisions.json` 与 `security.log`，只删档案不够 |
+| R-15 | **开机自启的 SYSTEM 任务在本机建不出来**（提权也不行） | 已提权实跑：`net session` 通过、端口已记录，`schtasks /create /sc onstart /ru SYSTEM /rl highest` 仍返回**拒绝访问**（本机 Windows 11 专业版，ProductType 1）。脚本已改成**失败降级**：仍注册 ONLOGON 任务 + 直接拉起站点 + 探端口确认，最后 rc 4 并写明"重启后不会自愈"。降级路径实跑通过（rc 4 · `[ok] site is up` · `/api/menu` 200 · `口令.txt` 落站点根） | 在这类机器上装完看着成功，重启后站点不在；ONSTART 那一半始终没被正面验证过 | `autostart.cmd` 打印拒绝原因与三条出路；`installer\run-site.log` 留 node 原话；`/status` 非提权可查；`schtasks /run` 不重启即验 | 在**真正的 Windows 10 与 Server 2019**（服务器 SKU 允许任务取 SYSTEM）上各重启一次，确认登录前 `/api/menu` 就回 200，并确认 `node` 按**机器范围**安装（装在个人目录下 `SYSTEM` 找不到）。客户端机要自启请改走"登录即起"或 NSSM 之类服务包装器，**先做许可核实** |
 | R-8 | **JSON 存储的规模上限** | 原子写 + 常驻索引 + mtime 失效 | 档案上千本后单文件读写与索引重建变慢；并发写只有进程内序 | 单实例部署；写操作串行 | 接近上限时换库（README §三 的判据），**不要**用"重建索引"当性能手段 |
 | R-9 | **反爬是减速带，不是围墙** | UA 门槛、深翻页门槛、签名直链、限流 | 已解锁口令者仍可逐页取走镜像正文 | 口令可吊销、可限范围、可到期；审计留痕 | 对外发放用**独立口令 + 指定书目范围 + 到期日**，不要发 `all` 长期口令 |
 | R-10 | **`BW_SECRET` 决定会话与所有签名** | 缺失时自动生成 `.secret`（0600） | 换密钥＝全部会话与直链作废；多实例不一致会随机 403 | 文档标注 | 多实例必须显式统一；备份该文件 |
@@ -786,7 +936,7 @@ Python + Tkinter 等于引入第二个运行环境，用户机器上有 Python �
 
 | 脚本 | 作用 | 为什么这么设计 |
 | --- | --- | --- |
-| `scripts/make-nginx-package.mjs` | 打"解压即上 Nginx"的部署包（`web/dist/` + `api/` + `nginx/` + `ops/` + `docs/` + `MANIFEST.md` + `SHA256SUMS.txt`） | **默认预演**，`--write` 才落盘、`--zip` 才压缩。核心是安全边界：`data/.secret`（会话与全部签名的主密钥）、`sessions.json`（活会话）、`security.log*`（含来源 IP 的审计流水）、`login-attempts.json`（锁定计数）**一律挡在包外**并逐条打印（`.pnpm/node_modules/server` 那条自指软链按路径挡，它会把整个开发 `server/` 灌进包）。`api/` 每次**现做**（内部跑 `pnpm --filter server deploy --legacy --prod`），不留可复用的旧快照（A-6 的成因就是复用了修复前的 deploy 产物）；包内 `api/` 自己重跑一次 `reseed`，所以出厂态不是开发残局。`web/dist/` 含编译后的 CKEditor，因此随包带 `LICENSE-NOTE.txt` + `COPYING.GPL` |
+| `scripts/make-nginx-package.mjs` | 打"解压即上 Nginx"的部署包（`web/dist/` + `api/` + `nginx/` + `ops/` + `docs/` + `dashboard/` + `installer/` + `MANIFEST.md` + `SHA256SUMS.txt`） | **默认预演**，`--write` 才落盘、`--zip` 才压缩。核心是安全边界：`data/.secret`（会话与全部签名的主密钥）、`sessions.json`（活会话）、`security.log*`（含来源 IP 的审计流水）、`login-attempts.json`（锁定计数）、`installer/port.txt` 与 `installer/run-site.log`（本机状态与含路径的运行日志）**一律挡在包外**并逐条打印（`.pnpm/node_modules/server` 那条自指软链按路径挡，它会把整个开发 `server/` 灌进包）。`api/` 每次**现做**（内部跑 `pnpm --filter server deploy --legacy --prod --config.node-linker=hoisted`），不留可复用的旧快照（A-6 的成因就是复用了修复前的 deploy 产物）；包内 `api/` 自己重跑一次 `reseed`，所以出厂态不是开发残局。`web/dist/` 含编译后的 CKEditor，因此随包带 `LICENSE-NOTE.txt` + `COPYING.GPL`。**出包末尾四道硬闸，任一红就不出包**：① 运行态扫描；② `api/node_modules` 软链接条数必须为 0（hoisted 平铺的证据）；③ **孤立自足性**——把 `api/` 拷进 `%TEMP%` 下祖先链无 `node_modules` 的位置（先自证这点）真起后端并要 `/api/menu` 返回 200 且有条目（A-11/F-18 加的）；④ **批处理合规**——包内每个 `.cmd`/`.bat` 必须 CRLF 且零高位字节（A-7/A-9 加的，`ops-extras/start-api.cmd` 曾带 34 个裸 LF 发布出去过） |
 | `ops-extras/verify-deploy.mjs` | 部署后验收（对**已上线的入口**跑，不碰仓库） | 默认只读；`--mutate` 才走"建档→修订→比对→置顶→删除"且自清。判定分三档：**FAIL**＝不通、**WARN**＝只在生产才要求（CSP）、**INFO**＝只有经 Nginx 才成立（`/assets/` 的 immutable），后两档不判红——否则会逼人把只读探针当故障单 |
 
 这两件都是被踩坑逼出来的（F-15：把 Nginx 的职责算到 Node 头上、在首页判只该给接口下发的 robots 头、
@@ -871,6 +1021,9 @@ node scripts/make-nginx-package.mjs --write --zip   # 出包：api/ 现做、包
 | 18 全站版本台账总表 | 在既有 `revisions.json` 上加聚合读端 `GET /api/ops/revisions` + `/ledger` 页（口径/流水/汇总三 pane，按档案与动作筛选），记忆化按数据代次失效，撤档行标 `alive=false` | 需求"各功能都要有视图化管理页与菜单"；逐档页看不出全站体积与孤儿历史（§四 4.9） |
 | 19 使用体验与运维交付 | 桌面端批注栏标题横排（仅收起窄导轨竖排）、页眉去 `sheet-max` 居中改为铺满贴左；启动生成根目录 `口令.txt`（明文口令速查，gitignore + 打包排除，`BW_CRED_FILE=0` 可关）；新增 `USAGE.md` 使用说明书 + 详细 Nginx 建站指南 | 走查加两条几何断言（`writing-mode` 与页眉首元素距左），163→165；口令速查文件必须与 `.gitignore`/打包 FORBIDDEN 同步，否则公开仓库会泄露明文口令 |
 | 20 Windows 桌面仪表盘 | 自带 csc.exe 现编的 WinForms 面板（26 KB、零新增依赖、不动许可台账）：手动启动端口一律留空必填、不合法则启动按钮禁用；六行环境体检（目录/Node≥20.19.0/pnpm/依赖/dist/数据），只代跑站点自己的 install/build/seed，装系统软件只开官方下载页；`--autostart` 沿用已确认端口、无记录时不猜端口；`install.cmd` 登记 HKCU 登录自启 + 开始菜单快捷方式，`uninstall.cmd` 只撤这两样；`dashboard/` 入部署包但不预置 exe | 需求"每次填端口"与"开机自启"冲突，取舍写成口径；LF-only `.cmd` 被 cmd.exe 劈开执行（A-7）；UIA 对 WinForms 报 `Pane` 且不支持 Value/InvokePattern，只能物理点击 + 用 `Name` 断言（A-8）；端口占用改直接拒绝 |
+| 21 部署包自足性修复 | `pnpm deploy` 改 **hoisted 平铺**（`--legacy --prod --config.node-linker=hoisted`）；出包加三条硬 gate：包内 `api/node_modules` 软链接数为 0、把 `api/` 拷进 `%TEMP%` 下**祖先无 `node_modules`** 的位置真起后端并请求 `/api/menu`、包内每个 `.cmd/.bat` 必须 CRLF + 零高位字节；仪表盘"依赖"体检改为逐个解析启动期 import（11 个说明符）而非看目录存在 | 已发布的 v1.0.0 包本身缺 `ip-address`，用户在远程机上起不来才发现（A-10→A-11）；**验收跑在仓库树里被根农场静默兜住＝假通过**（A-11），这正是 F-13"要证明因真实原因通过"在交付层的形态 |
+| 22 Windows 一键安装包 | `installer/` 七个脚本 + 一个 `.ps1`：`setup.cmd` 串起 ①环境（`env.cmd`，Node≥20.19.0 逐段数字比、winget 装 LTS、缺 winget 或下载失败退回打开官方页）② 部署（`deploy.cmd`，robocopy 且 `/XD api\data`、目标机现编 exe、拒绝"拷到自己"）③ 自启（`autostart.cmd` 注册 `BianwangSite` ONSTART/SYSTEM + `BianwangDashboard` ONLOGON 两个载体，`run-site.cmd` 按 `port.txt`→`dashboard.cfg`→**拒绝并写日志**取值）④ 实活检查；`uninstall.cmd` 按用户口径**全删含 `data`**（要 `DELETE`、可先拷数据）；`creds.ps1` 按码点拼中文口令文件名 | 提权检查曾挡住只读的 `/status`（已提到闸门之前）；`ops-extras/start-api.cmd` 带着 34 个裸 LF 发布过（A-7 复发，现已做成出包硬校验：包内所有 `.cmd/.bat` 必须 CRLF + 零高位字节）；批处理六条语法定律（A-12）；自删脚本读不到后续行（A-13） |
+| 23 一键安装包完整实跑 | 从**仓库树外**解压真包跑全流程：环境（含把闸门抬到 `>=99` 逼出"太旧"与"无 winget"两条分支，rc 2/3）、部署（七目录 + 现编 exe + `/` 200 + `/api/menu` 200 + `口令.txt` 落站点根）、三条拒绝分支（源码仓库里部署 rc 1 / 包拷到自身 rc 6 / 无端口记录 rc 2 且不猜端口）、端口占用幂等（already serving rc 0）、卸载（`/quiet` rc 0 留档 · `DELETE` rc 0 全删自清）、`creds` 三态；顺带定稿"发布只给一键安装包 + 源码两种形态"（D-15） | 抓到两个真 bug：`creds.cmd /root` 对读不到的目录打印 `[ok] found` 且 rc 0（A-14：非终止错误 + 空值继续跑），开机任务被拒时把还能成的登录任务与起站一起放弃（A-15，已改降级）；**提权后 `schtasks /ru SYSTEM` 在 Windows 11 客户端仍被拒**，故 `ONSTART` 成功那条仍未验证（R-15） |
 
 ---
 
@@ -890,3 +1043,8 @@ node scripts/make-nginx-package.mjs --write --zip   # 出包：api/ 现做、包
 6. **CKEditor 升级窗口**：不是"等升级"，而是**按 §八 8.1 的 SOP 走**——四道闸（pin 守卫 → 构建 → 两套接口自检 → 浏览器走查）
    任一红就回退，不许为了过测改业务代码去绕新 API。48.x 已改过两轮转换/选区 API（C-3、C-4），下一轮迟早来。
 7. **规模上限**：档案上千本后单文件读写与索引重建变慢（R-8），届时按 README §三 的判据换库，而不是"重建索引"当性能手段。
+8. **开机自启的 `ONSTART` 成功路径要在目标机上补验**（R-15）：本机已提权跑到注册这一步，但
+   Windows 11 客户端的 `schtasks /ru SYSTEM` 被策略拒绝（A-15），所以"任务建成 → 重启 → 登录前站点可达"这条链**仍未正面验证**。
+   要在**真正的 Windows 10** 与 **Server 2019** 上各跑一次 `installer\setup.cmd` → 重启 → 确认登录前
+   `http://127.0.0.1:<端口>/api/menu` 就返回 200，并确认 `node` 在 `SYSTEM` 的 PATH 里（按机器范围装，别装个人目录）；
+   Server 2019 还要额外走一遍"没有 winget"那条退回指引。客户端机若也被拒，改用"登录即起"或服务包装器（后者先核许可）。

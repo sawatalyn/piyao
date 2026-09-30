@@ -40,6 +40,7 @@ node scripts/make-nginx-package.mjs --write --zip # 再压成同名 .zip（解�
 包结构：`web/dist/`（Nginx root；后端在没有 Nginx 时也按 `api/../../web/dist` 自己伺服，便于单机先点一遍）·
 `api/`（Node 后端 + 生产依赖 + 出厂 data）· `nginx/`（站点与安全片段）·
 `ops/`（env 样例、systemd 单元、起停脚本、`verify-deploy.mjs` 验收）· `docs/`（四份文档）·
+`dashboard/`（Windows 仪表盘源码，exe 在目标机现编）· `installer/`（**Windows 一键安装**：环境、部署、自启、卸载，见 `USAGE.md` §10）·
 `MANIFEST.md` 与 `SHA256SUMS.txt`（逐件校验值，`api/node_modules` 用一行聚合值）。
 
 **打包脚本会刻意把运行态挡在包外**（清单里逐条打印）：`api/data/.secret`（会话与全部签名的主密钥）、
@@ -48,7 +49,12 @@ node scripts/make-nginx-package.mjs --write --zip # 再压成同名 .zip（解�
 所以出厂态与 `pnpm seed` 完全一致，不会夹带开发期经界面上传的图片；
 `reseed` 顺带生成的 `.secret` 也在出包前删掉，让部署机首启各自生成。
 最后再扫一遍包内是否还有运行态文件，有就拒绝出包。
-`node_modules` 复制时**解引用**（pnpm 的符号链接农场不进 zip），所以解压到没有软链接权限的 Windows 机上也不会碎。
+`node_modules` 现在由 `pnpm deploy --config.node-linker=hoisted` **平铺成实体目录**（零软链接）后才进包，所以拷到没有软链接权限的 Windows 机上也不会碎。
+这条不是美化：默认的 isolated 链接器 + 复制时解引用会**把包和它的兄弟依赖拆开**——`express-rate-limit` 的文件跟着走了，它 import 的 `ip-address` 留在原机的根农场里，
+于是包在开发机上测什么都正常（仓库根的农场是它的祖先目录，静默兜住了），换机才炸。
+出包脚本因此在**每次出包时硬校验两件事**：① 包内 `api/node_modules` 的软链接条数必须为 0；
+② 把 `api/` 拷到 `%TEMP%` 下一个**祖先目录里没有任何 `node_modules`** 的位置（校验前会先确认这点，否则拒绝校验）真起一次后端并请求 `/api/menu`，
+只有"进程起来 + HTTP 200 + 拿到条目"才允许出包。这条 gate 是那次线上翻车之后加的，见 DEVELOPMENT §四 与 §六。
 
 **出包后要再做一次"解压到别处以带 `.` 的目录 + 就地起"**（本机 `Expand-Archive` 到 `.scratch-*` 或部署路径本身以 `.` 开头，
 例如 `.httpdocs`）：`node api/src/index.js` 起来后 `node ops/verify-deploy.mjs http://127.0.0.1:<端口> --expect-prod`。
@@ -120,6 +126,10 @@ sudo nginx -t && sudo systemctl reload nginx
 改 `bianwang.conf` 里的 `server_name` 与证书路径；证书建议用 certbot 签发后由 Nginx 终止 TLS。
 
 ## 三、Windows（nginx.exe + 计划任务）
+
+> **只想双击装完就用**：解压部署包后直接跑 `installer\setup.cmd`（要管理员窗口才能注册开机任务），
+> 它会把环境检测、部署、自启注册、实活检查按顺序做完，全程对应 `USAGE.md` §10。
+> 下面这段是它做的四件事的**手工等价**，供需要自己控制落点或接入既有 nginx 安装时使用。
 
 ```bat
 :: 1. 产物就位
@@ -220,4 +230,11 @@ PDF 那本按书签逐节翻，页内**不该出现位图或 canvas**（只走�
 | 台账/比对页 429 | 写操作上限默认 40 次/分（`BW_WRITE_LIMIT_PER_MIN`）。批量导入时临时调高，跑完改回；**不要**在生产放宽 |
 | 馆务台账里"索引死链"不为零 | 档案正文仍引用已不存在的图片文件。修法是按提示**重传**，不要删索引记录（删了图就永久无解） |
 | `security.log` 一直涨 | 512KB 逐级轮转、保留 5 份（`security.log.1..5`）。要长期留存请外接采集器——`audit()` 只有一个写点、事件名与字段是稳定契约 |
-| 换机后起不来，报 `ERR_MODULE_NOT_FOUND`（如 `Cannot find package 'ip-address'`） | **只拷了 `server/` 没拷仓库根**：pnpm 的依赖农场在根 `node_modules/.pnpm/`，`server/node_modules/*` 只是指向它的软链接，压缩解压会被解引用、兄弟依赖留在原机。改用本包的 `api/`（`pnpm deploy` 产出、自足无软链接），或在**仓库根**跑 `pnpm install --frozen-lockfile`。详见 `USAGE.md` §9.8 |
+| 换机后起不来，报 `ERR_MODULE_NOT_FOUND`（如 `Cannot find package 'ip-address'`） | **只拷了 `server/` 没拷仓库根**：pnpm 的依赖农场在根 `node_modules/.pnpm/`，`server/node_modules/*` 只是指向它的软链接，压缩解压会被解引用、兄弟依赖留在原机。改用本包的 `api/`（`pnpm deploy --config.node-linker=hoisted` 产出、平铺无软链接，出包时已在 `%TEMP%` 下孤立真起一次），或在**仓库根**跑 `pnpm install --frozen-lockfile`。详见 `USAGE.md` §9.8 |
+| `installer\autostart.cmd` 说"需要管理员" | `schtasks /sc onstart /ru SYSTEM` 是非提权做不到的动作，脚本用 `net session` 探到就直接拒绝，**这是设计**：半权限注册出来的任务会在开机时静默不跑。开提权 cmd 重跑即可；只想看现状用 `autostart.cmd /status`，那个不需要提权 |
+| 已提权仍报"could not create the boot task (access denied)" | 客户端 Windows（实测 Windows 11 专业版）的组策略可以不让管理员令牌把任务身份设成 `SYSTEM`，任务计划程序只回"拒绝访问"。脚本会**降级而不是放弃**：仍注册登录任务、仍把站点直接拉起来并探端口确认，最后 rc 4 并写明"重启后不会自愈"。Server 2019 正常允许。三条出路见 `USAGE.md` §10.3 |
+| 开机后站点没起来 | 看 `<目标>\installer\run-site.log`。最常见是没有端口可绑：`run-site.cmd` 只认 `installer\port.txt`，其次才是仪表盘记住的端口（`%LOCALAPPDATA%\Bianwang\dashboard.cfg`），**两个都没有就拒绝启动并写日志**，绝不猜一个默认值去撞别人的服务。跑一次 `autostart.cmd /port <端口>` 记下即可。另一常见原因是 `node` 不在 `SYSTEM` 账户的 PATH 里——Node 要按**机器范围**装（MSI），装在个人目录下开机任务找不到 |
+| `env.cmd /install` 说 winget 不可用 | Windows 10 早期版本与 **Server 2019 默认不带 App Installer**。脚本会退回"打印官方下载地址并替你打开浏览器"，手动跑 `.msi` 再重跑 setup 就行；这不是失败 |
+| `deploy.cmd` 报 robocopy 失败（码 ≥ 8） | 目标不可写或路径太长。换一个当前账户可写的目录（`deploy.cmd D:\sites\bianwang`），或在提权窗口里跑。robocopy 的 1–7 都是**成功**码，脚本只把 ≥8 当失败，别被"有码"吓到 |
+| `deploy.cmd` 说"包已经坐在目标目录里" | 拒绝把自己拷到自己身上（那样 robocopy 会把每个文件报成"跳过，同一文件"，看着像部署失败）。要把新文件放上去，先把新解压的包放在别处再指过去；只想重注册自启就跑 `autostart.cmd` |
+| 卸载打印"系统找不到指定的路径"或返回码 1 | 旧版缺陷，已修：cmd.exe 逐行懒读批处理，脚本住在它要删的树里就会读不到后续行。现在卸载由 `%TEMP%` 里的一份副本执行删除与结论，**弹出的那个新窗口才是答题和看报告的地方**，别提前关。若报"仍在原处"，是有句柄占着目录——关掉仪表盘和任何停在该目录的命令行 |

@@ -18,6 +18,9 @@ dashboard/BianwangDashboard.exe
 # 仪表盘依赖探针的临时脚本（跑完即删，绝不能入库/入包）
 .bianwang-deps-probe.mjs
 server/.bianwang-deps-probe.mjs
+# 一键安装包在目标机上落下的机器状态（端口登记与后端输出），不入库也不入包
+installer/port.txt
+installer/run-site.log
 .qoder-credits/
 .env
 .env.local

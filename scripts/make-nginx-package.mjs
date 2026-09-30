@@ -15,8 +15,10 @@
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -29,7 +31,7 @@ const WRITE = process.argv.includes('--write');
 const ZIP_IT = process.argv.includes('--zip');
 
 /** 绝不进包的东西：密钥、活会话、审计日志、锁定计数，以及本机跑出来的验收报告（含来源 IP 与路径） */
-const FORBIDDEN = new Set(['.secret', 'sessions.json', 'security.log', 'login-attempts.json', '口令.txt', '.bianwang-deps-probe.mjs']);
+const FORBIDDEN = new Set(['.secret', 'sessions.json', 'security.log', 'login-attempts.json', '口令.txt', '.bianwang-deps-probe.mjs', 'port.txt', 'run-site.log']);
 const FORBIDDEN_PATTERNS = [/^verify-report-.*\.md$/];
 const norm = (p) => path.basename(p).replace(/^security\.log.*/, 'security.log');
 /**
@@ -74,13 +76,14 @@ const API_SRC = path.join(ROOT, 'outputs', 'package', '.api-deploy');
 
 const plan = [
   { to: 'web/dist', from: path.join(ROOT, 'web', 'dist'), kind: '前端产物：Nginx 的 root 指这里；后端在没有 Nginx 时也会按 api/../../web/dist 自己伺服（便于单机自测）' },
-  { to: 'api', from: API_SRC, deployed: true, kind: '后端运行时（pnpm deploy --legacy --prod 现做；复制时解引用成实体目录，压缩包里不留符号链接）' },
+  { to: 'api', from: API_SRC, deployed: true, kind: '后端运行时（pnpm deploy --legacy --prod --config.node-linker=hoisted 现做：依赖平铺成实体目录、零软链接，拷到别的机器也能起）' },
   { to: 'nginx', from: path.join(ROOT, 'nginx'), kind: 'Nginx 站点与安全片段' },
   { to: 'docs', from: ROOT, kind: '五份文档（README / DEPLOY / DEVELOPMENT / THIRD_PARTY_NOTICES / USAGE）', picks: DOCS },
   { to: 'ops', from: path.join(ROOT, 'ops-extras'), kind: '起停与验收脚本、环境变量样例、systemd/任务计划样例' },
   // 只放源码与 build/install 脚本，不放编译好的 exe：预置二进制会和 api/ 一样有"带上旧快照"的风险，
   // 而 install.cmd 在目标机上用系统自带的 csc.exe 现编一次只要 1 秒。
   { to: 'dashboard', from: path.join(ROOT, 'dashboard'), kind: 'Windows 仪表盘源码与 build/install 脚本（exe 在目标机现编，不预置二进制）', picks: DASHBOARD_FILES },
+  { to: 'installer', from: path.join(ROOT, 'installer'), kind: '一键安装包：环境检测/装/更新、部署、开机自启、卸载（脚本必须 CRLF + 纯 ASCII，见下面硬校验）' },
 ];
 
 
@@ -119,11 +122,22 @@ if (!WRITE) {
 fs.rmSync(STAGE, { recursive: true, force: true });
 fs.mkdirSync(STAGE, { recursive: true });
 
-/** 现做后端运行时：pnpm 的 legacy deploy 要求目标目录为空，所以先清掉自己上轮生成的那份 */
+/**
+ * 现做后端运行时：pnpm 的 legacy deploy 要求目标目录为空，所以先清掉自己上轮生成的那份。
+ *
+ * `--config.node-linker=hoisted` 不是可选优化，是**必需**：默认的 isolated 链接器把每个包的
+ * 兄弟依赖放在 `node_modules/.pnpm/<pkg>@<ver>/node_modules/` 里，顶层条目全是指向那里的软链接。
+ * 而软链接进 zip 要么丢、要么在解压机上指向不存在的路径，所以下面复制时必须解引用；
+ * 一解引用，顶层 `<pkg>/` 就成了离开 `.pnpm` 的实体目录，它 import 自己的依赖时
+ * 沿目录上溯再也碰不到那些兄弟——express-rate-limit 找不到 ip-address，
+ * Node 撑到 import 阶段才炸 `ERR_MODULE_NOT_FOUND`。
+ * hoisted 直接把整棵树平铺成实体目录（实测 0 条软链接、96 个顶层包），拷机拷得动。
+ */
 fs.rmSync(API_SRC, { recursive: true, force: true });
 const deploy = spawnSync(
   'pnpm',
-  ['--filter', 'server', 'deploy', '--legacy', '--prod', path.relative(ROOT, API_SRC).replaceAll('\\', '/')],
+  ['--filter', 'server', 'deploy', '--legacy', '--prod', '--config.node-linker=hoisted',
+    path.relative(ROOT, API_SRC).replaceAll('\\', '/')],
   { cwd: ROOT, encoding: 'utf8', shell: true }
 );
 if (deploy.status !== 0) {
@@ -145,8 +159,8 @@ for (const item of plan) {
   }
   fs.cpSync(item.from, path.join(STAGE, item.to), {
     recursive: true,
-    // pnpm 的 node_modules 是指向 .pnpm 仓库的符号链接农场：不解引用的话，
-    // zip 里会留一堆指向部署机上不存在路径的链接，且同一份内容被重复收两遍
+    // api/ 已经是 hoisted 平铺（下面数过软链接条数，留一条就判红）；
+    // 这里仍留解引用当保险：万一哪天依赖又长出软链接，宁可解成实体也不要在 zip 里留断链
     dereference: true,
     force: true,
     filter: (source) => !forbidden(source),
@@ -192,6 +206,160 @@ if (stillThere.length) {
   console.error(`包内仍有运行态文件，拒绝出包：${stillThere.join(', ')}`);
   process.exit(1);
 }
+
+/**
+ * ============ 孤立自足性硬校验 ============
+ * 这一步是上一版漏掉的，直接导致发出去的包在别人机器上起不来（v1.0.0 实测事故）：
+ * 包就落在 `outputs/` 下，而**仓库根的 `node_modules/.pnpm` 正好是它的祖先目录**；
+ * Node 解析裸标识符时沿目录一层层上溯找 `node_modules`，于是把包里没有的依赖"借"了回来，
+ * 本机验收全绿；同一份东西拷到没有那层农场的机器上，撑到 import 阶段炸
+ * `ERR_MODULE_NOT_FOUND: Cannot find package 'ip-address'`。
+ * 所以校验必须把包里这份 api/ 拷到**祖先路径里一层 node_modules 都没有**的路径，真起一次进程。
+ */
+function countSymlinks(dir) {
+  let n = 0;
+  const stack = [dir];
+  while (stack.length) {
+    const d = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(d, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.isSymbolicLink()) n += 1;
+      else if (e.isDirectory()) stack.push(path.join(d, e.name));
+    }
+  }
+  return n;
+}
+
+function firstNodeModulesAncestor(startDir) {
+  let d = path.resolve(startDir);
+  for (;;) {
+    const parent = path.dirname(d);
+    if (parent === d) return null;
+    const nm = path.join(parent, 'node_modules');
+    if (fs.existsSync(nm)) return nm;
+    d = parent;
+  }
+}
+
+const apiNmLinks = countSymlinks(path.join(STAGE, 'api', 'node_modules'));
+console.log(`api/node_modules 软链接条数：${apiNmLinks}（hoisted 平铺应为 0）`);
+if (apiNmLinks > 0) {
+  console.error(`✗ 依赖没平铺干净：还剩 ${apiNmLinks} 条软链接。解引用会把顶层包从它的兄弟依赖旁摘走，包不做。`);
+  process.exit(1);
+}
+
+const isoRoot = path.join(os.tmpdir(), `bianwang-isocheck-${Date.now()}`);
+const rescue = firstNodeModulesAncestor(isoRoot);
+if (rescue) {
+  console.error(`✗ 孤立校验做不了：${isoRoot} 的祖先路径上已有 node_modules（${rescue}）——在它下面跑会把缺的依赖借来，结果不可信。`);
+  process.exit(1);
+}
+fs.cpSync(path.join(STAGE, 'api'), path.join(isoRoot, 'api'), { recursive: true, force: true, dereference: true });
+
+const isoPort = await new Promise((resolve, reject) => {
+  const probe = net.createServer();
+  probe.on('error', reject);
+  probe.listen(0, '127.0.0.1', () => {
+    const p = probe.address().port;
+    probe.close(() => resolve(p));
+  });
+});
+
+const child = spawn(process.execPath, ['src/index.js'], {
+  cwd: path.join(isoRoot, 'api'),
+  encoding: 'utf8',
+  env: { ...process.env, BW_PORT: String(isoPort), BW_CRED_FILE: '0', NODE_ENV: 'production' },
+});
+let isoOut = '';
+const isoVerdict = await new Promise((resolve) => {
+  const timer = setTimeout(() => resolve('timeout'), 30000);
+  const grab = (buf) => {
+    isoOut += String(buf);
+    if (isoOut.includes('辨妄阁 API 已启动')) {
+      clearTimeout(timer);
+      resolve('started');
+    }
+  };
+  child.stdout.on('data', grab);
+  child.stderr.on('data', grab);
+  child.on('exit', (code) => {
+    clearTimeout(timer);
+    resolve(isoOut.includes('ERR_MODULE_NOT_FOUND') ? 'missing-module' : `exited-${code}`);
+  });
+});
+
+let isoHttp = 0;
+let isoItems = 0;
+if (isoVerdict === 'started') {
+  try {
+    const res = await fetch(`http://127.0.0.1:${isoPort}/api/menu`, {
+      headers: { 'user-agent': 'Mozilla/5.0 (bianwang-isocheck)' },
+    });
+    isoHttp = res.status;
+    const body = await res.json().catch(() => null);
+    isoItems = Array.isArray(body?.items) ? body.items.length : 0;
+  } catch (err) {
+    isoOut += `\n[isocheck] fetch 失败：${err?.message ?? err}`;
+  }
+}
+child.kill();
+for (let i = 0; i < 6; i += 1) {
+  try {
+    fs.rmSync(isoRoot, { recursive: true, force: true });
+    break;
+  } catch {
+    await new Promise((r) => setTimeout(r, 500));
+  }
+}
+
+if (isoVerdict !== 'started' || isoHttp !== 200 || isoItems === 0) {
+  console.error(`✗ 包内 api/ 在仓库外起不来（${isoVerdict} / GET /api/menu → ${isoHttp} / 菜单 ${isoItems} 项），包不做。`);
+  console.error(isoOut.slice(0, 1500));
+  process.exit(1);
+}
+console.log(`孤立自足性校验：${isoVerdict} · GET /api/menu → ${isoHttp}（${isoItems} 项）· 端口 ${isoPort} · 临时目录已清理`);
+
+/**
+ * ============ 批处理硬校验：必须 CRLF、必须纯 ASCII ============
+ * cmd.exe 按**机器 OEM 代码页**逐行解析 .cmd，两条都不是"不好看"而是"在别人机器上跑不起来"：
+ *   LF-only   → 每行行首被吃掉一个字符（实测把 `setlocal` 读成 `local`、`else` 读成 `lse`）；
+ *   非 ASCII  → 中文按代码页映射成乱码，路径和 robocopy 的 /XF 参数直接失效
+ *               （`/XF 口令.txt` 解出来是一串问号，那个文件照抄进包）。
+ * 本机 Git Bash 里两种都能跑，所以这一步只能靠字节判断，不能靠"我这边试过了"。
+ */
+const batchProblems = [];
+const scanBatch = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      scanBatch(full);
+      continue;
+    }
+    if (!/\.(cmd|bat)$/i.test(e.name)) continue;
+    const bytes = fs.readFileSync(full);
+    let bareLf = 0;
+    let high = 0;
+    for (let i = 0; i < bytes.length; i += 1) {
+      if (bytes[i] === 0x0a && (i === 0 || bytes[i - 1] !== 0x0d)) bareLf += 1;
+      if (bytes[i] > 0x7f) high += 1;
+    }
+    if (bareLf || high) {
+      batchProblems.push(`${path.relative(STAGE, full)}（LF-only 行数 ${bareLf} / 非 ASCII 字节 ${high}）`);
+    }
+  }
+};
+scanBatch(STAGE);
+if (batchProblems.length) {
+  console.error(`✗ 批处理脚本不合格，包不做（cmd.exe 会吃行首字符或把中文读成乱码）：`);
+  for (const p of batchProblems) console.error(`    ${p}`);
+  process.exit(1);
+}
+console.log('批处理校验：包内所有 .cmd/.bat 均为 CRLF 且纯 ASCII');
 
 /* 守卫与许可再生：包里的依赖必须与本机验证过的完全一致 */
 const guard = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'pin-guard.mjs')], { cwd: ROOT, encoding: 'utf8' });

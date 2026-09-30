@@ -52,6 +52,11 @@ node scripts/api-smoke.mjs
 > **口令速查**：服务启动时会在项目根目录生成 **`口令.txt`**，列出全部登录账号口令与镜像站入馆口令，方便本地查阅。
 > 它含明文口令，已被 `.gitignore` 与打包排除（绝不入库/入部署包）；不需要时设 `BW_CRED_FILE=0` 关掉，上生产前请删除并改密。
 
+> **一台干净的 Windows 机器，什么都不想装？** 解压 `bianwang-<版本>-nginx.zip`，用**管理员** cmd 跑
+> `installer\setup.cmd`：它按顺序做完**环境检测/装 Node → 部署程序 → 注册开机自启（后端 `ONSTART`/SYSTEM + 仪表盘 `ONLOGON` 两个计划任务）→ 起站并实访 `/api/menu`**，
+> 每步幂等、任一步失败就停下报是哪一步。卸载用 `installer\uninstall.cmd`（**默认全删含 `api\data`**，要打出 `DELETE` 才动手，可先拷一份）。
+> 单独一步也有对应脚本：`env.cmd` / `deploy.cmd` / `autostart.cmd` / `creds.cmd`。详见 [`USAGE.md` §10](USAGE.md)。
+
 出厂示例账号另有一名 `demo` / `demo-pass`（角色 editor，显示名「示例馆员（可删除）」），
 用于让用户名册在初始状态就有可改可删的对象；`/users` 页可直接移除它。
 **每项功能都随包附一份实体示例**（对勘图文、原始载体与材料源链接、资源库条目、可在线阅览的 EPUB 与 PDF、
@@ -72,8 +77,10 @@ node scripts/api-smoke.mjs
 | `pnpm package:zip` | 生成 `outputs/package/bianwang-<版本>-nginx/` 并压成 zip（解压即上 Nginx） |
 | `pnpm verify:deploy <url>` | 部署后验收（默认只读；`--mutate` 才走写链路，跑完自清），报告落盘 |
 
-> `pnpm package:zip` 里包内的 `api/` 每次**现做**（内部跑 `pnpm --filter server deploy --legacy --prod`），
-> 不会复用上一轮的 deploy 快照；出包后请**解压到另一个目录再跑一次 `verify:deploy`**（路径最好以 `.` 开头，
+> `pnpm package:zip` 里包内的 `api/` 每次**现做**（内部跑 `pnpm --filter server deploy --legacy --prod --config.node-linker=hoisted`，
+> 依赖平铺成无软链接的实体目录），不会复用上一轮的 deploy 快照；出包末尾还有三道拒绝出包的硬闸
+> （包内软链接数为 0 / 拷到 `%TEMP%` 孤立位置真起一次后端 / 包内每个 `.cmd` 都是 CRLF 且纯 ASCII）。
+> 出包后仍请**解压到另一个目录再跑一次 `verify:deploy`**（路径最好以 `.` 开头，
 > 这么试过才能发现"站点被放进点开头目录"这类只在换机时才现形的问题，见 DEPLOY §一 与 DEVELOPMENT §六 A-6）。
 
 > `pnpm seed` 只重写演示数据与 4 张固定 id 的演示图片（`demomedia01-04.png`，反复播种不会堆积新文件）；
@@ -108,6 +115,14 @@ server/     Express 5 + JSON 文件存储
 nginx/      站点配置与安全片段
 dashboard/  Windows 图形仪表盘：Dashboard.cs（WinForms 源码）+ build/install/uninstall.cmd
             exe 由目标机自带的 csc.exe 现编，不入库也不入部署包
+installer/  Windows 一键安装（只进部署包，运行态 port.txt/run-site.log 不入库）：
+              setup.cmd     四步串起来的一键入口（环境→部署→自启→实访校验）
+              env.cmd       检测 Node/pnpm/winget，/install 时经 winget 装 LTS，失败退回官方页
+              deploy.cmd    包 → 运行位置，robocopy 且 /XD 保住 api\data，目标机现编 exe
+              autostart.cmd 注册 BianwangSite(ONSTART/SYSTEM) + BianwangDashboard(ONLOGON)，/status 免提权
+              run-site.cmd  开机任务执行的脚本：端口只认 port.txt→仪表盘记忆，都没有就拒绝起
+              creds.cmd     打开中文命名的口令.txt（文件名由 creds.ps1 按码点拼，批处理里不写中文）
+              uninstall.cmd 全删含 api\data，需输入 DELETE，可先拷数据；/quiet 只停不删
 ops-extras/ 部署包附件：环境变量样例、systemd 单元、起停脚本、部署后验收脚本（verify-deploy.mjs）
 scripts/    许可登记表生成 · 依赖守卫 · 接口自检 · 全量体检 · 浏览器走查 · 部署包生成
 ```
@@ -209,9 +224,31 @@ SVG/PDF 之类可携带脚本的类型即使包内声明也不放行；每个响
 | `BW_REVISION_KEEP` | `30` | 每档保留的完整快照版数；超出后丢最旧的一版（台账是核查用，不是备份盘） |
 | `BW_WRITE_LIMIT_PER_MIN` | `40` | 登录写操作每分钟上限；命中返回 429。批量导入/自检时可临时调高，**不要**在生产放宽 |
 
-## 七、部署
+## 七、部署与获取方式
+
+**发布只提供两种形态**（GitHub Releases 上就这两个资产，取舍理由记在 `DEVELOPMENT.md` 的 D-15）：
+
+| 形态 | 拿它来做什么 | 里面有什么 |
+| --- | --- | --- |
+| **① 一键安装包** `bianwang-<版本>-nginx.zip` | 直接在一台机器上把站跑起来 | `api/`（后端 + 平铺好的生产依赖）· `web/dist/`（前端产物）· `dashboard/`（仪表盘源码，目标机现编）· `installer/`（**Windows 一键：环境/部署/自启/卸载**）· `nginx/` · `ops/`（含 `verify-deploy.mjs` 验收）· `docs/` · `MANIFEST.md` + `SHA256SUMS.txt` |
+| **② 源码** （git clone 或 Release 页的 Source code 包） | 读代码、改代码、自己构建 | 完整仓库；需自备 pnpm 并按 §一 的四步跑 |
+
+> 包内**不含任何运行态**：`.secret`（会话与图片签名主密钥）、`sessions.json`、`security.log`、`login-attempts.json`、
+> `口令.txt` 都被出包脚本挡在包外并逐条打印；`api/data/` 会被整目录清空后按出厂种子重播。
+> 也**不含预编译二进制**——仪表盘 exe 在目标机现编。
 
 见 `DEPLOY.md`：构建 → 拷贝 `web/dist` → 配 Nginx（`nginx/bianwang.conf` + `bianwang-proxy.inc`）→ systemd 托管后端 → 备份数据目录。
+
+**Windows 目标机可以整段跳过上面的手工步骤**：解压部署包后用管理员 cmd 跑 `installer\setup.cmd`
+（环境 → 部署 → 两个计划任务自启 → 实访校验，一条命令做完，卸载用 `installer\uninstall.cmd`），
+能力对照、Win10 与 Server 2019 的差别、端口与 `口令.txt` 的口径都在 [`USAGE.md` §10](USAGE.md)。
+Linux 侧仍是 systemd + Nginx 那套；`installer/` 只处理 Windows。
+
+> **拷机部署有一条硬规矩：只拷 `server/` 起不来。** pnpm 的依赖农场在仓库根的 `node_modules/.pnpm/` 里，
+> `server/node_modules/*` 只是指向它的软链接，压缩解压会把包自身带过去、**兄弟依赖留下**，
+> 于是换机才炸 `ERR_MODULE_NOT_FOUND: 'ip-address'`。部署包里的 `api/` 用 `--config.node-linker=hoisted`
+> 平铺成实体目录（零软链接），而且**出包时会把它拷到 `%TEMP%` 下一个祖先目录没有任何 `node_modules` 的位置真起一次**——
+> 只有真起来了、`/api/menu` 回 200 且拿得到条目才允许出包。这条闸是 v1.0.0 翻车之后加的，见 `DEVELOPMENT.md` §六 A-11 / F-18。
 
 ## 八、外部参照与许可
 
@@ -263,6 +300,8 @@ XML 层则改用 `@rgrove/parse-xml`（见上），因此阅览功能新增的�
 | 色域 | `audit-palette-separation.mjs` | 12 家族色域互斥与对比度 | PASS（最近对 lungmen/yan：field ΔE 14.9） |
 | 依赖 | `pnpm guard:deps`（`prebuild` 自动跑） | 全部声明精确 pin、实装与声明一致、许可在宽松白名单内、每个包有用途与出处、同一包不在两工作区各装一份 | PASS（19 条声明 / 17 个运行时依赖） |
 | 构建 | `pnpm build` | 许可登记表再生 → 依赖守卫 → Vite 分包 | 通过；游客首屏 = index.html + 5 个入口资源（含 Vue 运行时），gzip 合计约 63KB；CKEditor 整体只进登录后才加载的编辑页分包（782.6KB / gzip 210.2KB），在线阅览页分包 9.6KB / gzip 4.5KB，两者游客都不下载 |
+| 出包 | `pnpm package:zip` | 四道拒绝出包的硬闸：运行态文件扫描 → `api/node_modules` 软链接数为 0 → **孤立自足性**（`%TEMP%` 下祖先无 `node_modules` 处真起后端 + `/api/menu` 200 且有条目）→ 包内每个 `.cmd/.bat` 必须 CRLF 且纯 ASCII | 通过（软链接 0 · started / 200 / 12 项 · CRLF+ASCII · 26.3 MB / 2442 件） |
+| Windows 一键安装 | `installer\*.cmd` 实跑（真包解压到**仓库树外**） | 环境检测与两条分支（抬闸门逼出"太旧" rc 2、无 winget 退回官方页 rc 3）、部署（七目录 + 目标机现编 exe）、三条拒绝分支（源码仓库里部署 rc 1 / 包拷到自身 rc 6 / 无端口记录 rc 2 **不猜端口**）、起站后 `/` 200 与 `/api/menu` 200、`口令.txt` 落站点根、端口占用幂等、卸载 `/quiet` 留档与 `DELETE` 全删自清、`creds` 三态 | **全流程通过**；唯一未正面验证的是 `ONSTART`+`SYSTEM` 注册——本机已提权但 `schtasks` 被客户端策略拒绝，脚本按设计降级（仍注册登录任务 + 直接起站 + rc 4 说明），见 `DEVELOPMENT.md` §七 R-15 |
 
 **三套脚本必须串行跑**（走查/自检与数据变更并发会产生幻影失败，见 `DEVELOPMENT.md` §六 F-6）。
 走查脚本每轮先 `reseed` 取确定基线，并自带恢复：改过的顺序、菜单与置顶在用完后复位，可反复执行。
