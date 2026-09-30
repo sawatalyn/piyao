@@ -34,9 +34,23 @@ if not exist "Dashboard.cs" (
   exit /b 2
 )
 
+rem csc cannot overwrite a running exe; without this guard the failure surfaces as a
+rem bare "error CS0016" that says nothing about the real cause.
+rem findstr, not find: a PATH that leads with Git-for-Windows /usr/bin shadows find.exe
+rem with GNU find, which then chokes on /i and silently defeats the guard.
+tasklist /FI "IMAGENAME eq BianwangDashboard.exe" 2>nul | findstr /i /c:"BianwangDashboard.exe" >nul
+if not errorlevel 1 (
+  echo [X] BianwangDashboard.exe is still running - close the dashboard window first.
+  echo     csc cannot overwrite an exe that is in use.
+  exit /b 3
+)
+
 if exist "BianwangDashboard.exe" del /q "BianwangDashboard.exe" 2>nul
 
-"%CSC%" /nologo /target:winexe /optimize+ ^
+rem /codepage:65001 is required, not cosmetic: without it csc guesses the source
+rem encoding from the machine's ANSI codepage. Dashboard.cs holds Chinese string
+rem literals, so a wrong guess bakes mojibake straight into the exe's UI text.
+"%CSC%" /nologo /target:winexe /optimize+ /codepage:65001 ^
   /out:BianwangDashboard.exe ^
   /r:System.dll /r:System.Core.dll /r:System.Windows.Forms.dll /r:System.Drawing.dll ^
   Dashboard.cs

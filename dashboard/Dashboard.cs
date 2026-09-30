@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // 辨妄阁 · 桌面仪表盘（BianwangLauncher.exe）
 //
 // 为什么是 WinForms + 自带 csc，而不是 Electron / Python：
@@ -19,6 +19,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Text;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -192,15 +193,49 @@ namespace Bianwang.Launcher
             }
         }
 
+
+        // ---------------- 字体：绝不写死单一字族 ----------------
+        // 之前硬编码 "Microsoft YaHei UI"，这台机器恰好装了所以看着正常；换一台没装
+        // 该字族的 Windows，GDI+ 会静默回退到没有中文字形的字体，界面立刻变成方块/乱码。
+        // 所以改成按候选链探测本机实际装了哪个，全都没有才退回系统默认字体。
+        static readonly string UiFamily = ResolveUiFamily();
+
+        static string ResolveUiFamily()
+        {
+            string[] candidates = new string[]
+            {
+                "Microsoft YaHei UI", "Microsoft YaHei",
+                "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC",
+                "SimHei", "SimSun", "NSimSun", "KaiTi", "FangSong",
+                "Malgun Gothic", "Yu Gothic UI", "Meiryo UI", "Segoe UI"
+            };
+            try
+            {
+                using (InstalledFontCollection installed = new InstalledFontCollection())
+                {
+                    foreach (string want in candidates)
+                        foreach (FontFamily f in installed.Families)
+                            if (string.Equals(f.Name, want, StringComparison.OrdinalIgnoreCase))
+                                return f.Name;
+                }
+            }
+            catch (Exception) { }
+            try { return SystemFonts.DefaultFont.FontFamily.Name; }
+            catch (Exception) { return FontFamily.GenericSansSerif.Name; }
+        }
+
+        static Font Ui(float size) { return new Font(UiFamily, size, FontStyle.Regular, GraphicsUnit.Point); }
+        static Font Ui(float size, FontStyle style) { return new Font(UiFamily, size, style, GraphicsUnit.Point); }
+
         // ---------------- 界面 ----------------
         void BuildShell()
         {
             Text = "辨妄阁 · 运行仪表盘";
             BackColor = PaperLeaf;
             ForeColor = InkSoft;
-            Font = new Font("Microsoft YaHei UI", 9F);
-            ClientSize = new Size(716, 668);
-            MinimumSize = new Size(680, 600);
+            Font = Ui(9F);
+            ClientSize = new Size(716, 700);
+            MinimumSize = new Size(690, 640);
             StartPosition = FormStartPosition.CenterScreen;
             FormClosing += OnFormClosing;
 
@@ -228,7 +263,7 @@ namespace Bianwang.Launcher
             };
             Label title = new Label();
             title.Text = "辨妄阁 · 运行仪表盘";
-            title.Font = new Font("Microsoft YaHei UI", 15F, FontStyle.Bold);
+            title.Font = Ui(15F, FontStyle.Bold);
             title.ForeColor = InkSoft;
             title.AutoSize = true;
             title.Location = new Point(12, 8);
@@ -262,7 +297,7 @@ namespace Bianwang.Launcher
             portBox = new TextBox();
             portBox.Location = new Point(58, 27);
             portBox.Width = 84;
-            portBox.Font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold);
+            portBox.Font = Ui(12F, FontStyle.Bold);
             portBox.TextAlign = HorizontalAlignment.Center;
             portBox.BackColor = PaperLeaf;
             // 关键：绝不预填。手动启动一律空白，逼一次真实的确认。
@@ -354,7 +389,7 @@ namespace Bianwang.Launcher
 
             envPanel = new FlowLayoutPanel();
             envPanel.Location = new Point(12, 56);
-            envPanel.Size = new Size(676, 216);
+            envPanel.Size = new Size(676, 240);
             envPanel.AutoScroll = true;
             // 默认是 LeftToRight：不改成 TopDown，六行体检会横着排成一条，只剩第一行可见
             envPanel.FlowDirection = FlowDirection.TopDown;
@@ -362,7 +397,7 @@ namespace Bianwang.Launcher
             envPanel.BackColor = TerraField;
             envPanel.BorderStyle = BorderStyle.None;
             envPane.Controls.Add(envPanel);
-            envPane.Height = 286;
+            envPane.Height = 310;
 
             // —— 日志 ——
             GroupBox logPane = new GroupBox();
@@ -377,32 +412,35 @@ namespace Bianwang.Launcher
             logBox.BackColor = PaperLeaf;
             logBox.ForeColor = InkSoft;
             logBox.BorderStyle = BorderStyle.None;
-            logBox.Font = new Font("Consolas", 9F);
+            // Consolas 没有中文字形，后端日志里全是中文，写死它只能靠字体链接救急、换机就变方块
+            logBox.Font = Ui(9F);
             logPane.Controls.Add(logBox);
         }
 
         void BuildEnvRow(EnvRow row)
         {
             Panel line = new Panel();
-            line.Width = 656;
+            line.Width = 650;
             line.Height = 34;
             line.Margin = new Padding(2, 2, 2, 2);
             line.BackColor = PaperLeaf;
 
             Label mark = new Label();
-            mark.Text = row.State == 0 ? "✓" : (row.State == 1 ? "!" : "✗");
-            mark.Font = new Font("Microsoft YaHei UI", 11F, FontStyle.Bold);
+            // 不用 ✓/✗：这两个符号（U+2713/U+2717）在中文字体里常常没有字形，又会变成方块；
+            // 而且读屏软件念不出"一个勾"代表什么。直接写状态词。
+            mark.Text = row.State == 0 ? "正常" : (row.State == 1 ? "警告" : "缺失");
+            mark.Font = Ui(9F, FontStyle.Bold);
             mark.ForeColor = row.State == 0 ? OkGreen : (row.State == 1 ? InkMute : Critical);
             mark.AutoSize = true;
-            mark.Location = new Point(6, 7);
+            mark.Location = new Point(6, 9);
             line.Controls.Add(mark);
 
             Label name = new Label();
             name.Text = row.Name;
-            name.Font = new Font("Microsoft YaHei UI", 9F, FontStyle.Bold);
+            name.Font = Ui(9F, FontStyle.Bold);
             name.ForeColor = InkSoft;
             name.AutoSize = true;
-            name.Location = new Point(28, 9);
+            name.Location = new Point(46, 10);
             line.Controls.Add(name);
 
             Label detail = new Label();
@@ -411,7 +449,7 @@ namespace Bianwang.Launcher
             detail.AutoEllipsis = true;
             detail.Width = 300;
             detail.Height = 18;
-            int detailX = 28 + TextRenderer.MeasureText(row.Name, name.Font).Width + 10;
+            int detailX = 46 + TextRenderer.MeasureText(row.Name, name.Font).Width + 10;
             if (detailX > 300) detailX = 300;
             detail.Location = new Point(detailX, 10);
             line.Controls.Add(detail);
@@ -419,7 +457,7 @@ namespace Bianwang.Launcher
             Button act = new Button();
             act.Text = row.ActionLabel;
             act.Size = new Size(104, 24);
-            act.Location = new Point(500, 5);
+            act.Location = new Point(496, 5);
             act.Enabled = row.Action != null;
             act.Visible = !string.IsNullOrEmpty(row.ActionLabel);
             act.FlatStyle = FlatStyle.Flat;
@@ -432,7 +470,7 @@ namespace Bianwang.Launcher
             Button help = new Button();
             help.Text = "指引";
             help.Size = new Size(48, 24);
-            help.Location = new Point(606, 5);
+            help.Location = new Point(600, 5);
             help.Visible = !string.IsNullOrEmpty(row.HelpUrl);
             help.FlatStyle = FlatStyle.Flat;
             help.FlatAppearance.BorderColor = RuleQuiet;

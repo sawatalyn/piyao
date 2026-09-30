@@ -31,7 +31,9 @@ echo Remaining on disk (delete by hand only if you want them gone):
 echo   %CD%\BianwangDashboard.exe
 echo   %LOCALAPPDATA%\Bianwang\dashboard.cfg   (remembers the last port)
 echo.
-echo Your archive data and the plain-password user file are NOT touched by this
-echo script. If you want them reviewed first, open  口令.txt  in the site root.
+echo Your archive data and the plain-password user file are NOT touched by this script.
+echo If you want them reviewed first, open the password quick-reference text file that
+echo the backend drops into the site root when it starts - its file name is Chinese, so
+echo this script does not print it (cmd.exe would render those bytes as mojibake).
 pause
 exit /b 0
