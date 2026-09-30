@@ -121,13 +121,13 @@ const roleTag = (row) => (row.workspace === 'web' ? (row.kind === '运行时' ? 
 }
 .foot-rules dt {
   font-family: var(--font-display);
-  color: var(--paper-leaf);
+  color: var(--band-ink-strong);
   letter-spacing: 0.08em;
   white-space: nowrap;
 }
 .foot-rules dd {
   margin: 0;
-  color: var(--rule-firm);
+  color: var(--band-ink-mute);
   line-height: 1.7;
 }
 .foot-rules b {
@@ -137,16 +137,16 @@ const roleTag = (row) => (row.workspace === 'web' ? (row.kind === '运行时' ? 
 .foot-stats {
   margin: var(--space-4) 0 0;
   font-size: var(--text-small);
-  color: var(--rule-firm);
+  color: var(--band-ink-mute);
 }
 .foot-stats b {
-  color: var(--paper-leaf);
+  color: var(--band-ink-strong);
 }
 .foot-sub {
   font-family: var(--font-display);
   font-size: var(--text-body);
   letter-spacing: 0.12em;
-  color: var(--paper-leaf);
+  color: var(--band-ink-strong);
   margin: var(--space-5) 0 var(--space-3);
 }
 .foot-refs {
@@ -156,7 +156,7 @@ const roleTag = (row) => (row.workspace === 'web' ? (row.kind === '运行时' ? 
   display: grid;
   gap: var(--space-2);
   font-size: var(--text-small);
-  color: var(--rule-firm);
+  color: var(--band-ink-mute);
 }
 .foot-refs b {
   color: var(--anno-gold);

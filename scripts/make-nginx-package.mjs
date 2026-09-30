@@ -29,7 +29,7 @@ const WRITE = process.argv.includes('--write');
 const ZIP_IT = process.argv.includes('--zip');
 
 /** 绝不进包的东西：密钥、活会话、审计日志、锁定计数，以及本机跑出来的验收报告（含来源 IP 与路径） */
-const FORBIDDEN = new Set(['.secret', 'sessions.json', 'security.log', 'login-attempts.json', '口令.txt']);
+const FORBIDDEN = new Set(['.secret', 'sessions.json', 'security.log', 'login-attempts.json', '口令.txt', '.bianwang-deps-probe.mjs']);
 const FORBIDDEN_PATTERNS = [/^verify-report-.*\.md$/];
 const norm = (p) => path.basename(p).replace(/^security\.log.*/, 'security.log');
 /**

@@ -547,17 +547,21 @@ namespace Bianwang.Launcher
                 HelpUrl = "https://pnpm.io/installation"
             });
 
-            bool depsOk = !needPnpm || Directory.Exists(Path.Combine(paths.Root, "node_modules"));
+            // 目录在不在 ≠ 依赖能不能解析。pnpm 的依赖农场在**仓库根**的 node_modules/.pnpm 里，
+            // server/node_modules/* 全是指向它的软链接。只把 server/ 拷到别的机器时，
+            // 包体自己被解引用带过去了、它的兄弟依赖（如 ip-address）没带，
+            // 于是 node 直到 import 阶段才炸 ERR_MODULE_NOT_FOUND。所以这里真跑一次 import。
+            DepProbe probe = ProbeDeps();
+            bool depsOk = probe.Ok;
             EnvRow depsRow = new EnvRow
             {
                 Name = "依赖",
-                Detail = needPnpm
-                    ? (depsOk ? "node_modules 就位" : "还没装依赖（首次运行必须先装）")
-                    : "部署包已内置，无需再装",
-                State = depsOk ? 0 : 1,
-                ActionLabel = (needPnpm && !depsOk) ? "装依赖" : ""
+                Detail = probe.Detail,
+                State = depsOk ? 0 : 2,
+                Required = true,
+                ActionLabel = (!depsOk && needPnpm) ? "装依赖" : ""
             };
-            if (needPnpm && !depsOk)
+            if (!depsOk && needPnpm)
                 depsRow.Action = delegate { RunStep("pnpm install", "install", null); };
             BuildEnvRow(depsRow);
 
@@ -638,6 +642,110 @@ namespace Bianwang.Launcher
             }
             catch (Exception) { }
             return null;
+        }
+
+        // 后端启动期真正 import 的外部包（与 server/src 的静态 import 图一致）。
+        // 少一个就会以 ERR_MODULE_NOT_FOUND 崩在监听之前，所以体检必须逐个真解析。
+        static readonly string[] StartupImports = new string[]
+        {
+            "express", "express-rate-limit", "sanitize-html", "minisearch", "multer",
+            "cookie-parser", "csv-parse/sync", "csv-stringify/sync", "diff",
+            "@rgrove/parse-xml", "pdfjs-dist/legacy/build/pdf.mjs"
+        };
+
+        sealed class DepProbe
+        {
+            public bool Ok;
+            public string Detail;
+        }
+
+        DepProbe ProbeDeps()
+        {
+            DepProbe r = new DepProbe { Ok = false, Detail = "没探到" };
+            if (paths == null) { r.Detail = "没定位到站点目录，无从探测"; return r; }
+
+            string serverNM = Path.Combine(paths.ServerDir, "node_modules");
+            string rootFarm = Path.Combine(paths.Root, "node_modules", ".pnpm");
+            bool hasServerNM = Directory.Exists(serverNM);
+            bool hasFarm = Directory.Exists(rootFarm);
+
+            if (!hasServerNM && !(paths.FromPackage && Directory.Exists(serverNM)))
+            {
+                if (!paths.FromPackage && !hasFarm && !Directory.Exists(Path.Combine(paths.Root, "node_modules")))
+                {
+                    r.Detail = "依赖没装：在仓库根跑 pnpm install --frozen-lockfile";
+                    return r;
+                }
+            }
+
+            try
+            {
+                // 探针必须落在 server/ 里，不能放 %TEMP%：
+                // ESM 的裸模块名是按**发起 import 的那个文件的位置**逐级向上找 node_modules 的，
+                // 跟进程 cwd 无关。放 TEMP 里跑，健康的安装也会被判成"全部缺包"而误挡启动。
+                string scriptPath = Path.Combine(paths.ServerDir, ".bianwang-deps-probe.mjs");
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                sb.Append("const specs=[");
+                for (int i = 0; i < StartupImports.Length; i++)
+                {
+                    if (i > 0) sb.Append(',');
+                    sb.Append('"').Append(StartupImports[i]).Append('"');
+                }
+                sb.Append("];const bad=[];for(const s of specs){try{await import(s)}catch(e){bad.push(s+' <- '+((e&&e.code)||'ERR'))}}");
+                sb.Append("if(bad.length){console.log('MISS|'+bad.join(', '))}else{console.log('OK')}");
+                File.WriteAllText(scriptPath, sb.ToString(), new System.Text.UTF8Encoding(false));
+
+                string stdout;
+                try
+                {
+                    ProcessStartInfo psi = new ProcessStartInfo("node.exe", "\"" + scriptPath + "\"");
+                    psi.WorkingDirectory = paths.ServerDir;
+                    psi.UseShellExecute = false;
+                    psi.RedirectStandardOutput = true;
+                    psi.RedirectStandardError = true;
+                    psi.CreateNoWindow = true;
+                    using (Process p = Process.Start(psi))
+                    {
+                        stdout = p.StandardOutput.ReadToEnd();
+                        p.StandardError.ReadToEnd();
+                        if (!p.WaitForExit(60000)) { try { p.Kill(); } catch (Exception) { } }
+                        stdout = (stdout ?? string.Empty).Trim();
+                    }
+                }
+                finally
+                {
+                    try { File.Delete(scriptPath); } catch (Exception) { }
+                }
+
+                if (stdout == "OK")
+                {
+                    r.Ok = true;
+                    r.Detail = paths.FromPackage
+                        ? "api/node_modules 自足，启动期 import 全部可解析"
+                        : "启动期 import 全部可解析（依赖农场在仓库根，正常）";
+                    return r;
+                }
+
+                string missing = stdout.StartsWith("MISS|") ? stdout.Substring(5) : stdout;
+                if (missing.Length > 150) missing = missing.Substring(0, 150) + "…";
+
+                // 分情形给结论：这是"只拷了 server/ 没拷仓库根"的典型指纹
+                if (!paths.FromPackage && hasServerNM && !hasFarm)
+                    r.Detail = "依赖树残缺（拷机拷坏了）：" + missing
+                        + " —— pnpm 的依赖在仓库根的 node_modules/.pnpm 里，server/node_modules 只是软链接；"
+                        + "只拷 server/ 就会这样。改在仓库根跑 pnpm install --frozen-lockfile，或直接用部署包里的 api/（自足、无软链接）。";
+                else if (paths.FromPackage)
+                    r.Detail = "部署包的 api/node_modules 不完整：" + missing
+                        + " —— api/ 要整目录一起拷（含 node_modules），别只拿 api/src。";
+                else
+                    r.Detail = "有包解析不了：" + missing + " —— 在仓库根跑 pnpm install --frozen-lockfile 补齐。";
+                return r;
+            }
+            catch (Exception ex)
+            {
+                r.Detail = "依赖探测没跑起来：" + ex.Message;
+                return r;
+            }
         }
 
         static string RunCapture(string exe, string arg)

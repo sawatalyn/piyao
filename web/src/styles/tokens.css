@@ -18,6 +18,13 @@
   --terra-signal-text: #fff9f0;
   --terra-critical: #8c2825;
 
+  /* —— 印朱"填充面"：与印朱"描线/文字"分开定义 ——
+       夜间档把 --terra-signal 提亮是对的（它当文字或描线压在深底上时需要更亮），
+       但当它是**承载白字的实心面**时，提亮反而把白字对比拉到 3.9:1。
+       所以承诺按钮的底色单独成对，保证"底"与"字"在任何一档都是反色关系。 */
+  --seal-fill: var(--terra-signal);
+  --seal-fill-hover: var(--terra-signal-ink);
+
   /* —— 派生纸面层级（同一色相内加深/提亮，不引入新色相） —— */
   --paper-deep: #efe9dc;
   --paper-leaf: #fbf8f1;
@@ -26,6 +33,15 @@
   --ink-mute: #6b6c66;
   --rule-quiet: #c3bcac;
   --rule-firm: #8e8878;
+
+  /* —— 反色带（卷尾）：底色与带内文字必须成对定义 ——
+     页面纸面 token（--paper-*）是"背景语义"，明暗切换时整组一起翻，
+     拿它当文字色就会在夜间档变成"深底深字"（实测对比 1.18:1，等于看不见）。
+     所以带内前景独立成套，与 --band-surface 永远保持反色关系。 */
+  --band-surface: #171817;
+  --band-ink: #efe9dc;
+  --band-ink-strong: #fbf8f1;
+  --band-ink-mute: #a8a294;
 
   /* —— 矿物颜料：批注专用（朱砂/藤黄/花青/墨），仅用于标注笔迹 —— */
   --anno-seal: #b23b2f;
@@ -116,6 +132,9 @@ html[data-tone='night'] {
   --terra-signal: #d0574a;
   --terra-signal-ink: #e0705f;
   --terra-critical: #e0705f;
+  /* 填充面不跟着提亮：白字在 #d0574a 上只有 3.90:1，沉到这两个值才有 5.19 / 6.87 */
+  --seal-fill: #b84235;
+  --seal-fill-hover: #9e3125;
   --paper-deep: #23211d;
   --paper-leaf: #221f1b;
   --paper-shadow: #0f0e0c;
@@ -123,6 +142,11 @@ html[data-tone='night'] {
   --ink-mute: #a49d8e;
   --rule-quiet: #3d3a33;
   --rule-firm: #5b564c;
+  /* 反色带：夜间档底色更深，带内文字整组翻成浅色，保持与 --band-surface 的反色关系 */
+  --band-surface: #0f0e0c;
+  --band-ink: #ece5d6;
+  --band-ink-strong: #f6f2e8;
+  --band-ink-mute: #a49d8e;
   --anno-seal: #d0574a;
   --anno-gold: #c2a05a;
   --anno-indigo: #7fa3bd;

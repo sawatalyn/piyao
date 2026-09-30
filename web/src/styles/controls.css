@@ -5,7 +5,10 @@
    ============================================================ */
 
 .paper-btn {
+  /* 底与字成对声明：任何状态要改就同时改这一对，
+     避免出现"改了 --btn-bg 却没人读它"或"换了底忘了换字"的脱钩 */
   --btn-bg: var(--paper-leaf);
+  --btn-fg: var(--terra-ink);
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -13,7 +16,7 @@
   min-height: var(--control-min-h);
   padding: var(--space-2) var(--space-4);
   background: var(--btn-bg);
-  color: var(--terra-ink);
+  color: var(--btn-fg);
   border: var(--control-stroke) solid var(--rule-firm);
   border-radius: var(--control-radius);
   font-family: var(--font-display);
@@ -38,13 +41,18 @@
   pointer-events: none;
 }
 
+/* 悬停：只改底色这一项，字色由各变体在基规则上声明一次并保持不变——
+   这样任何变体都不会"换了底、字还跟着 .paper-btn:hover 跑"。
+   原先这里直接写 `background: …`，特指度高于 `.seal-press` 的 `background: var(--btn-bg)`，
+   鼠标一悬到「用印」按钮上就被洗成纸色，印朱整块消失。 */
 .paper-btn:hover {
+  --btn-bg: var(--paper-deep);
   border-color: var(--terra-ink);
-  background: var(--paper-deep);
 }
 
-/* 落印：向下位移，短促可逆 */
+/* 落印：向下位移，短促可逆；底色同步沉一级 */
 .paper-btn:active {
+  --btn-bg: var(--terra-surface);
   translate: 0 var(--press-distance);
 }
 
@@ -62,8 +70,9 @@
 
 /* 承诺按钮：印朱实心 + 双栏边界，全页最强轮廓，仅用于用印/提交 */
 .seal-press {
-  --btn-bg: var(--terra-signal);
-  color: var(--terra-signal-text);
+  --btn-bg: var(--seal-fill);
+  --btn-fg: var(--terra-signal-text);
+  color: var(--btn-fg);
   border-color: var(--terra-signal-ink);
   box-shadow: inset 0 0 0 1px var(--terra-signal-text), 0 0 0 3px var(--terra-signal-text),
     0 0 0 4px var(--terra-signal-ink);
@@ -74,7 +83,7 @@
   background: linear-gradient(225deg, var(--terra-signal-ink) 0 50%, #6f1f19 50%);
 }
 .seal-press:hover {
-  --btn-bg: var(--terra-signal-ink);
+  --btn-bg: var(--seal-fill-hover);
   border-color: var(--terra-ink);
 }
 .seal-press:focus-visible {
@@ -84,17 +93,20 @@
 /* 危险动作：保留语义临界色，沿用同一折角拓扑 */
 .btn-critical {
   --btn-bg: transparent;
-  color: var(--terra-critical);
+  --btn-fg: var(--terra-critical);
+  color: var(--btn-fg);
   border-color: var(--terra-critical);
 }
 .btn-critical:hover {
-  background: var(--terra-critical);
-  color: var(--terra-signal-text);
+  --btn-bg: var(--terra-critical);
+  --btn-fg: var(--terra-signal-text);
   border-color: var(--terra-critical);
 }
 
 .btn-quiet {
   --btn-bg: transparent;
+  --btn-fg: var(--ink-soft);
+  color: var(--btn-fg);
   border-color: var(--rule-quiet);
   min-height: 34px;
   padding: var(--space-1) var(--space-3);

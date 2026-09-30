@@ -546,6 +546,19 @@ Python + Tkinter 等于引入第二个运行环境，用户机器上有 Python �
   而 `|| echo 0` 把报错吞成了"0 行非 ASCII"，害我一度判定 `.cmd` 干净；改用 `tr -d '\0-\177' | wc -c` 数高位字节才抓到。
   教训：**判定"没有 X"的手段本身必须能抓到 X**——能报错的检查不等于会失败的检查。
 
+- **A-10 "依赖就位"用目录存在来判断，是个假保证**（用户把 `server/`+`web/`+`dashboard/` 压到远程机起不来才暴露）：
+  仪表盘的体检行原本只测 `Directory.Exists(root/node_modules)`，而 pnpm 的依赖农场在**仓库根**的
+  `node_modules/.pnpm/` 里，`server/node_modules/express-rate-limit` 只是指向它的软链接。
+  单拷 `server/` 时链接被解引用（包自身文件带过去了）、**兄弟依赖没带**，
+  于是 Node 一路撑到 import 阶段才炸 `ERR_MODULE_NOT_FOUND: 'ip-address'`。
+  更糟的是那一行 `Required=false`、`State` 最高只到"警告"，**不拦启动**，等于放一个必死进程出去再让用户看堆栈。
+  修法：探针真跑一遍后端启动期的全部外部 import（11 个说明符），失败即 `Required=true` 并禁用启动按钮，
+  同时按"有 server/node_modules 但没有根 .pnpm"这个指纹给出**具体成因与三条出路**。
+  附带一个自己踩出来的坑：探针脚本一开始我写到 `%TEMP%` 里跑，结果**连完好安装都报"全部缺包"**——
+  ESM 的裸模块名是按**发起 import 的文件位置**逐级向上找 `node_modules`，与进程 cwd 无关；
+  必须把探针落在 `server/` 目录内（跑完即删，并加进 `.gitignore` 与打包 FORBIDDEN）。
+  教训：**"能不能跑"只能靠真跑一次来判定**；目录在不在、文件多不多都是代理指标，代理指标在换机时最先失真。
+
 ### B · Vue 与前端
 
 - **B-1 `<input type="date">` 只认 `yyyy-MM-dd`**。档案里存过完整 ISO 时间戳时，编辑页字段**静默显示为空**并伴控制台告警。

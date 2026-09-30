@@ -445,3 +445,35 @@ node ops/verify-deploy.mjs https://你的域名 --expect-prod --mutate --user ad
 所以：**如果你看到的界面是乱码，几乎一定是拿旧版 exe 在跑**。`build.cmd` 会拒绝覆盖正在运行的 exe（它会直接提示"先关掉仪表盘窗口"），
 所以正确顺序是：关掉仪表盘窗口 → 重跑 `dashboard\build.cmd`（或 `install.cmd`）→ 再启动。
 三个 `.cmd` 脚本本身保持**纯 ASCII**，因为 cmd.exe 按 OEM 代码页读批处理，脚本里写中文只会打印成乱码。
+
+### 9.8 往另一台机器拷文件：别只拷 `server/`（会起不来）
+
+**症状**：拷过去用仪表盘点「启动」，日志里报
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'ip-address'
+imported from ...\server\node_modules\express-rate-limit\dist\index.mjs
+```
+
+**为什么**：pnpm 的依赖树不在 `server/node_modules` 里，而在**仓库根**的 `node_modules/.pnpm/` 里——
+`server/node_modules/express-rate-limit` 只是一个**指向根农场的软链接**。
+你把 `server/` 单独压走再解压到别的机器，链接会被解引用成实体目录（包自己的文件带过去了），
+但它的**兄弟依赖**（`ip-address` 这类）留在原来那台机器的根农场里，没跟过去。
+于是 `express-rate-limit` 找得到、它 import 的东西找不到，Node 直到加载阶段才炸。
+
+**三条正确路线，按推荐排序**：
+
+| 做法 | 怎么做 | 适用 |
+| --- | --- | --- |
+| **用部署包**（推荐） | 把 `bianwang-1.0.0-nginx.zip` 整个解压到目标机，用里面的 `api/` 起。`api/node_modules` 是 `pnpm deploy` 产出的**自足、无软链接**目录，拷机拷得动 | 生产部署、给别人一套能跑的 |
+| 目标机上装依赖 | 把**整个仓库**（含根 `package.json`、`pnpm-lock.yaml`、`.npmrc`）拷过去，在**根目录**跑 `pnpm install --frozen-lockfile`，再 `pnpm build` | 目标机能联网/有代理 |
+| 连根 `node_modules` 一起拷 | 必须连 `node_modules/.pnpm` 整棵树一起拷，且 Windows 上要保证软链接不被解引用（普通压缩会破坏它） | 不推荐，容易再踩 |
+
+**仪表盘现在会替你挡住这件事**：「依赖」那一行不再只看 `node_modules` 目录在不在，
+而是**真的把后端启动期要 import 的包逐个解析一遍**（`express` / `express-rate-limit` / `sanitize-html` /
+`multer` / `cookie-parser` / `csv-*` / `diff` / `@rgrove/parse-xml` / `pdfjs-dist`）。
+只拷了 `server/` 时它会标成**缺失**、列出具体哪几个包解析不了、写明是这个原因，
+并且**禁用「启动站点」按钮**——不再放一个必死的进程出去。
+
+> 顺带一句：ESM 的裸模块名是按**发起 import 的文件位置**向上找 `node_modules` 的，跟进程 cwd 无关。
+> 所以这个探针脚本必须落在 `server/` 目录里跑，放 `%TEMP%` 会把一套完好的安装误判成"全部缺包"。

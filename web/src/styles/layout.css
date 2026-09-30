@@ -510,13 +510,11 @@
 /* —— 卷尾：折叠文书块 + 框架与许可登记 —— */
 .shell-foot {
   grid-area: foot;
-  background: var(--terra-ink);
-  color: var(--paper-deep);
+  /* 底与字都取自 --band-*：不再拿前景 token 当背景、也不拿背景 token 当字色 */
+  background: var(--band-surface);
+  color: var(--band-ink);
   border-block-start: var(--frame-rule) solid var(--terra-signal-ink);
   padding: var(--space-6) clamp(var(--space-4), 4vw, var(--space-8)) var(--space-7);
-}
-html[data-tone='night'] .shell-foot {
-  background: #0f0e0c;
 }
 
 .foot-inner {
@@ -541,7 +539,7 @@ html[data-tone='night'] .shell-foot {
   inset-inline-end: 0;
   width: 14px;
   height: 14px;
-  background: linear-gradient(225deg, var(--terra-ink) 0 50%, var(--rule-firm) 50%);
+  background: linear-gradient(225deg, var(--band-surface) 0 50%, var(--band-ink-mute) 50%);
   clip-path: polygon(100% 0, 0 0, 100% 100%);
 }
 
@@ -549,7 +547,7 @@ html[data-tone='night'] .shell-foot {
   font-family: var(--font-display);
   font-size: var(--text-lead);
   letter-spacing: 0.16em;
-  color: var(--paper-leaf);
+  color: var(--band-ink-strong);
   margin-block-end: var(--space-3);
 }
 
@@ -560,7 +558,7 @@ html[data-tone='night'] .shell-foot {
 }
 .lic-table caption {
   text-align: start;
-  color: var(--rule-firm);
+  color: var(--band-ink-mute);
   font-size: var(--text-micro);
   letter-spacing: 0.16em;
   padding-block-end: var(--space-2);
@@ -573,20 +571,20 @@ html[data-tone='night'] .shell-foot {
   vertical-align: top;
 }
 .lic-table th {
-  color: var(--paper-leaf);
+  color: var(--band-ink-strong);
   font-family: var(--font-display);
   letter-spacing: 0.08em;
   white-space: nowrap;
 }
 .lic-table td {
-  color: var(--rule-firm);
+  color: var(--band-ink-mute);
 }
 .lic-table code {
   font-family: var(--font-mono);
   color: var(--anno-gold);
 }
 .lic-table a {
-  color: var(--paper-deep);
+  color: var(--band-ink);
 }
 
 /* —— 断点：批注栏转为卷首披露条，对勘转单栏横界 —— */

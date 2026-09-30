@@ -220,3 +220,4 @@ PDF 那本按书签逐节翻，页内**不该出现位图或 canvas**（只走�
 | 台账/比对页 429 | 写操作上限默认 40 次/分（`BW_WRITE_LIMIT_PER_MIN`）。批量导入时临时调高，跑完改回；**不要**在生产放宽 |
 | 馆务台账里"索引死链"不为零 | 档案正文仍引用已不存在的图片文件。修法是按提示**重传**，不要删索引记录（删了图就永久无解） |
 | `security.log` 一直涨 | 512KB 逐级轮转、保留 5 份（`security.log.1..5`）。要长期留存请外接采集器——`audit()` 只有一个写点、事件名与字段是稳定契约 |
+| 换机后起不来，报 `ERR_MODULE_NOT_FOUND`（如 `Cannot find package 'ip-address'`） | **只拷了 `server/` 没拷仓库根**：pnpm 的依赖农场在根 `node_modules/.pnpm/`，`server/node_modules/*` 只是指向它的软链接，压缩解压会被解引用、兄弟依赖留在原机。改用本包的 `api/`（`pnpm deploy` 产出、自足无软链接），或在**仓库根**跑 `pnpm install --frozen-lockfile`。详见 `USAGE.md` §9.8 |

@@ -15,6 +15,9 @@ outputs/
 verify-report-*.md
 # 仪表盘 exe 是本地编译产物（源码在 dashboard/，install.cmd 现编），不入库
 dashboard/BianwangDashboard.exe
+# 仪表盘依赖探针的临时脚本（跑完即删，绝不能入库/入包）
+.bianwang-deps-probe.mjs
+server/.bianwang-deps-probe.mjs
 .qoder-credits/
 .env
 .env.local
