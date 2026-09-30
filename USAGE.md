@@ -466,7 +466,7 @@ imported from ...\server\node_modules\express-rate-limit\dist\index.mjs
 
 | 做法 | 怎么做 | 适用 |
 | --- | --- | --- |
-| **用部署包**（推荐） | 把 `bianwang-1.0.0-nginx.zip` 整个解压到目标机，用里面的 `api/` 起。`api/node_modules` 是 `pnpm deploy` 产出的**自足、无软链接**目录，拷机拷得动 | 生产部署、给别人一套能跑的 |
+| **用部署包**（推荐） | 把 `bianwang-1.1.0-nginx.zip` 整个解压到目标机，用里面的 `api/` 起。`api/node_modules` 是 `pnpm deploy` 产出的**自足、无软链接**目录，拷机拷得动 | 生产部署、给别人一套能跑的 |
 | 目标机上装依赖 | 把**整个仓库**（含根 `package.json`、`pnpm-lock.yaml`、`.npmrc`）拷过去，在**根目录**跑 `pnpm install --frozen-lockfile`，再 `pnpm build` | 目标机能联网/有代理 |
 | 连根 `node_modules` 一起拷 | 必须连 `node_modules/.pnpm` 整棵树一起拷，且 Windows 上要保证软链接不被解引用（普通压缩会破坏它） | 不推荐，容易再踩 |
 
@@ -496,7 +496,7 @@ imported from ...\server\node_modules\express-rate-limit\dist\index.mjs
 | 查口令 | `creds.cmd` | `creds.cmd` · `creds.cmd /show` | 不要 |
 | **全部串起来** | **`setup.cmd`** | `setup.cmd` · `setup.cmd D:\Sites\bianwang` · `/check` · `/skipenv` · `/port 8787` | 想注册自启就要 |
 
-**新机器上只需要记一个名字：`setup.cmd`。** 解压 `bianwang-1.0.0-nginx.zip`，进 `installer\`，双击 `setup.cmd`。它按 ① → ② → ③ → 实活校验 的顺序跑，**任一步失败就停下来报是哪一步**，不会把你带进"装了一半"的状态。
+**新机器上只需要记一个名字：`setup.cmd`。** 解压 `bianwang-1.1.0-nginx.zip`，进 `installer\`，双击 `setup.cmd`。它按 ① → ② → ③ → 实活校验 的顺序跑，**任一步失败就停下来报是哪一步**，不会把你带进"装了一半"的状态。
 
 > **别搞混两个 `uninstall.cmd`**，它们删的东西差一个数量级：
 > `dashboard\uninstall.cmd`（§9）只撤仪表盘自己登记的登录启动项和快捷方式，**不碰数据、不碰站点**；
