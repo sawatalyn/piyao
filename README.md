@@ -20,6 +20,11 @@
 
 > **一键启动（从源码）**：Windows 双击仓库根目录的 **`start.cmd`**，macOS / Linux / WSL 执行 **`./start.sh`**——
 > 脚本只补做还缺的步骤（装依赖 → 写演示数据 → 构建 `web/dist` → 生产模式单端口起在 8787）。
+>
+> **不想用命令行？** Windows 上还有图形仪表盘：双击 **`dashboard\install.cmd`** 装好后运行
+> `BianwangDashboard.exe`，填端口点一下就把站起起来，并可登记登录自启；它只用 Windows 自带的
+> .NET 编译器现编，**不新增任何 npm 依赖**，也不预置二进制。详见 [`USAGE.md` §9](USAGE.md)。
+>
 > 下面是手动分步，等价于脚本做的事。
 
 ```bash
@@ -101,6 +106,8 @@ server/     Express 5 + JSON 文件存储
   data/           posts.json · tags.json · menu.json · users.csv · resources.json · revisions.json ·
                   library.json · library-keys.json · media/ · media-index.json · library/ · security.log
 nginx/      站点配置与安全片段
+dashboard/  Windows 图形仪表盘：Dashboard.cs（WinForms 源码）+ build/install/uninstall.cmd
+            exe 由目标机自带的 csc.exe 现编，不入库也不入部署包
 ops-extras/ 部署包附件：环境变量样例、systemd 单元、起停脚本、部署后验收脚本（verify-deploy.mjs）
 scripts/    许可登记表生成 · 依赖守卫 · 接口自检 · 全量体检 · 浏览器走查 · 部署包生成
 ```

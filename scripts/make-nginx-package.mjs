@@ -61,6 +61,8 @@ function walk(dir, base = dir, out = [], keepForbidden = false) {
 }
 
 const DOCS = ['README.md', 'DEPLOY.md', 'DEVELOPMENT.md', 'THIRD_PARTY_NOTICES.md', 'USAGE.md'];
+// 仪表盘只带源码与脚本；exe 由 install.cmd 在目标机用自带 csc.exe 现编
+const DASHBOARD_FILES = ['Dashboard.cs', 'build.cmd', 'install.cmd', 'uninstall.cmd'];
 
 /**
  * 后端运行时**每次打包现做**，不复用旧产物。
@@ -76,6 +78,9 @@ const plan = [
   { to: 'nginx', from: path.join(ROOT, 'nginx'), kind: 'Nginx 站点与安全片段' },
   { to: 'docs', from: ROOT, kind: '五份文档（README / DEPLOY / DEVELOPMENT / THIRD_PARTY_NOTICES / USAGE）', picks: DOCS },
   { to: 'ops', from: path.join(ROOT, 'ops-extras'), kind: '起停与验收脚本、环境变量样例、systemd/任务计划样例' },
+  // 只放源码与 build/install 脚本，不放编译好的 exe：预置二进制会和 api/ 一样有"带上旧快照"的风险，
+  // 而 install.cmd 在目标机上用系统自带的 csc.exe 现编一次只要 1 秒。
+  { to: 'dashboard', from: path.join(ROOT, 'dashboard'), kind: 'Windows 仪表盘源码与 build/install 脚本（exe 在目标机现编，不预置二进制）', picks: DASHBOARD_FILES },
 ];
 
 

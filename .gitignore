@@ -13,6 +13,8 @@ server/data/
 outputs/
 # 验收脚本每轮落盘的报告（含实测值与时间戳，是运行态不是源码，与打包时的排除口径一致）
 verify-report-*.md
+# 仪表盘 exe 是本地编译产物（源码在 dashboard/，install.cmd 现编），不入库
+dashboard/BianwangDashboard.exe
 .qoder-credits/
 .env
 .env.local

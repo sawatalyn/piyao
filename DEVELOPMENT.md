@@ -434,6 +434,40 @@ PDF 一并参与（节名取自书签）。**刻意不检索正文**：正文检
 
 ---
 
+### 4.10 Windows 桌面仪表盘（不新增依赖的图形起停）
+
+需求是"安装后可开机自启或 exe 启动的仪表盘，启动时每次都要 GUI 填端口，并协助检查/安装/更新运行环境"。
+
+**选型按"先开源后自研"走过一遍，结论是自研且零依赖**（详见 §3.4.0 的方法）：
+Electron 会往仓库里塞进上百 MB 依赖树并逼着重写许可台账（且其自带 Node/Chromium 与本机已装的重复）；
+Python + Tkinter 等于引入第二个运行环境，用户机器上有 Python 与否还得再体检一次；
+两者都要改 `pin-guard` 白名单。而 Windows **自带** .NET Framework 4.x 的 `csc.exe`
+（`%WINDIR%\Microsoft.NET\Framework64\v4.0.30319`，本机实测存在），WinForms 直接写原生窗口，
+产物 26 KB、零新增依赖、零许可台账变更。语言级别被编译器锁在 **C# 5**，
+因此源码里不能有字符串插值、`?.`、`=>` 成员与 `nameof`（首轮编译就是靠真编译器把这些逼出来的，见 §九第 20 阶段）。
+
+**两条需求本身冲突，必须挑一边。** "每次启动都要填端口"和"开机自启"不可能同时成立——开机时没人填。
+交付口径：**手动启动一律空白必填**（不预填、不读配置，端口不合法时「启动站点」按钮 `Enabled=false`），
+只有 `--autostart` 那条路允许沿用上次确认过的端口；**且首次开机若从未确认过端口，它不猜一个默认值**，
+只把窗口打开等人填。这样"记住端口"不会被误读成"绕过了端口确认"。
+
+**环境体检只代跑站点自己的步骤。** 六行（站点目录 / Node / pnpm / 依赖 / 前端产物 / 数据）逐项给结论；
+`pnpm install`、`pnpm build`、`reseed` 这三个动作在仓库目录内、可重做，所以给按钮代跑；
+而装 Node、装 pnpm 属于**往用户机器上装系统级软件**，只给「指引」按钮打开官方下载页，不静默安装、不提权。
+这条边界不是保守：本机实测**没有 winget**，"自动安装"只剩"下载官方 msi 并替你点确认"一条路，
+那不该由一个启动器替用户决定。
+
+**不预置二进制进部署包。** 打包脚本 `dashboard/` 只带 `Dashboard.cs` 与三个 `.cmd`，
+理由与 A-6 里"`api/` 必须每次现做"同源——预编译产物会带着改之前的旧快照被打包出去。
+`install.cmd` 在目标机现编一次约 1 秒，成本可以忽略。
+
+**撞到的两个真实缺陷**：LF-only 的 `.cmd` 被 cmd.exe 劈开执行（A-7，已用 `.gitattributes` 钉死 CRLF）；
+以及验证界面时 UIA 对 WinForms 的抓手全不奏效（A-8），最后靠"读 `BoundingRectangle` 物理点击 +
+用 `TextBox` 的 UIA `Name` 断言字段内容"完成实测。端口占用从"warn 后照样起"改成**直接拒绝**：
+起了也只会立刻 `EADDRINUSE` 退出，用户看到的是"仪表盘点了没反应"，不如一句话说清"站点还活着，去开浏览器"。
+
+---
+
 ## 五、决策记录（ADR 摘要）
 
 | # | 决策 | 备选项 | 取舍依据 |
@@ -476,6 +510,22 @@ PDF 一并参与（节名取自书签）。**刻意不检索正文**：正文检
   修法：`res.sendFile('index.html', { root: DIST })`——把目录交给 `root`，被检查的只剩 `index.html` 一段。
   教训：**"绝对路径参数"不等于"更安全"**，同一个 API 在 `static` 与 `sendFile` 两条路上的检查口径不一样；
   以及：交付包必须做**解压后异地启动**的回环测试，只在原目录跑通的包不算通过。
+- **A-7 LF-only 的 `.cmd` 会被 cmd.exe 逐行吃掉行首字符**（真实缺陷，做 Windows 仪表盘时撞到）：
+  编辑工具默认写 LF，`uninstall.cmd` 在真 cmd 下跑出 `'local' 不是内部或外部命令`、`'lse'`、`'cho'` 这类碎片——
+  也就是 `setlocal` 少了 `set`、`else` 少了 `e`、`echo` 少了 `e`，整脚本从中间劈开执行。
+  同批的 `install.cmd` 当时"看起来正常"，只是它的结构恰好没踩到读取偏移，**不能当作没问题的证据**。
+  修法：所有 `.cmd`/`.bat` 转成 CRLF，并加 `.gitattributes` 把口径钉死（`*.cmd text eol=crlf`、`*.sh text eol=lf`），
+  否则换一台机 `git checkout` 又会拿回 LF 版本复发。
+  教训：**Windows 批处理的换行符是正确性问题，不是风格问题**；而且"另一个脚本跑好了"不构成这一份的通过依据，
+  每个交付脚本要各自实跑。
+- **A-8 验证 WinForms 界面时，UIA 的常规抓手全都用不上**（写仪表盘自检时连撞三次）：
+  WinForms 控件在 UI Automation 里 `ControlType` 一律报 **`Pane`**（不是 `Edit`/`Button`），按控件类型找元素会返回 0 个，
+  必须按 `ClassName`（`WindowsForms10.EDIT.*` / `*.BUTTON.*`）找；`ValuePattern` 与 `InvokePattern`
+  对 TextBox/Button **都不支持**（抛"不支持的模式"），所以既不能塞值也不能"点击"，只能读 `BoundingRectangle`
+  拿真实坐标做物理点击 + `SendKeys`。而 `TextBox` 的**内容恰好会暴露成 UIA `Name`**，于是"填进去没有"这件事反而能直接断言。
+  另一个坑：`SetForegroundWindow` 只在**第一次点击前**有效——后续点击若不再置顶，坐标会打到别的窗口上
+  （实测把「停止」的点击打到桌面，误判成"停止功能坏了"，白查一轮代码）。
+  教训：**自动化断言失败时先证明"点击确实落在了目标上"**，再怀疑被测程序。
 
 ### B · Vue 与前端
 
@@ -788,6 +838,7 @@ node scripts/make-nginx-package.mjs --write --zip   # 出包：api/ 现做、包
 | 17 部署硬化与出包 | 打包脚本改为 `api/` **每次现做**（`pnpm deploy --legacy --prod` + 收尾 `CI=true pnpm install` 复位）、修 SPA 兜底在点开头目录下 404、`verify-deploy` 台账断言改"等指定事件到齐"而非"有条数" | `send@1.2.1` 对整条路径做 `containsDotFile()`（A-6）、轮询退出条件太弱致假 PASS（F-17）、`deploy` 目标须为空且无 `--force` |
 | 18 全站版本台账总表 | 在既有 `revisions.json` 上加聚合读端 `GET /api/ops/revisions` + `/ledger` 页（口径/流水/汇总三 pane，按档案与动作筛选），记忆化按数据代次失效，撤档行标 `alive=false` | 需求"各功能都要有视图化管理页与菜单"；逐档页看不出全站体积与孤儿历史（§四 4.9） |
 | 19 使用体验与运维交付 | 桌面端批注栏标题横排（仅收起窄导轨竖排）、页眉去 `sheet-max` 居中改为铺满贴左；启动生成根目录 `口令.txt`（明文口令速查，gitignore + 打包排除，`BW_CRED_FILE=0` 可关）；新增 `USAGE.md` 使用说明书 + 详细 Nginx 建站指南 | 走查加两条几何断言（`writing-mode` 与页眉首元素距左），163→165；口令速查文件必须与 `.gitignore`/打包 FORBIDDEN 同步，否则公开仓库会泄露明文口令 |
+| 20 Windows 桌面仪表盘 | 自带 csc.exe 现编的 WinForms 面板（26 KB、零新增依赖、不动许可台账）：手动启动端口一律留空必填、不合法则启动按钮禁用；六行环境体检（目录/Node≥20.19.0/pnpm/依赖/dist/数据），只代跑站点自己的 install/build/seed，装系统软件只开官方下载页；`--autostart` 沿用已确认端口、无记录时不猜端口；`install.cmd` 登记 HKCU 登录自启 + 开始菜单快捷方式，`uninstall.cmd` 只撤这两样；`dashboard/` 入部署包但不预置 exe | 需求"每次填端口"与"开机自启"冲突，取舍写成口径；LF-only `.cmd` 被 cmd.exe 劈开执行（A-7）；UIA 对 WinForms 报 `Pane` 且不支持 Value/InvokePattern，只能物理点击 + 用 `Name` 断言（A-8）；端口占用改直接拒绝 |
 
 ---
 

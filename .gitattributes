@@ -1,0 +1,22 @@
+# 换行口径固定：cmd.exe 读 LF-only 的 .cmd 会逐行吃掉行首字符（实测把 setlocal 读成
+# 'local'、把 if/else 读成 'lse'），所以批处理必须以 CRLF 入库；shell 脚本必须 LF。
+* text=auto eol=lf
+
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+*.cs   text eol=crlf
+
+*.sh   text eol=lf
+
+# 二进制，别碰
+*.png  binary
+*.jpg  binary
+*.gif  binary
+*.webp binary
+*.avif binary
+*.epub binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.ico  binary
+*.woff2 binary
