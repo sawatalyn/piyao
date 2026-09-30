@@ -787,6 +787,7 @@ node scripts/make-nginx-package.mjs --write --zip   # 出包：api/ 现做、包
 | 16 选型回头补账 | 按"先找现成仓库"重扫一轮：`diff`/`@rgrove/parse-xml`/`csv-*` 替换三处自研、`pdfjs-dist` 引入、`pin-guard` 精确 pin + 许可白名单 + 用途登记 | 排除现成日志栈与 ZIP 库的理由逐条落档（§三 3.4） |
 | 17 部署硬化与出包 | 打包脚本改为 `api/` **每次现做**（`pnpm deploy --legacy --prod` + 收尾 `CI=true pnpm install` 复位）、修 SPA 兜底在点开头目录下 404、`verify-deploy` 台账断言改"等指定事件到齐"而非"有条数" | `send@1.2.1` 对整条路径做 `containsDotFile()`（A-6）、轮询退出条件太弱致假 PASS（F-17）、`deploy` 目标须为空且无 `--force` |
 | 18 全站版本台账总表 | 在既有 `revisions.json` 上加聚合读端 `GET /api/ops/revisions` + `/ledger` 页（口径/流水/汇总三 pane，按档案与动作筛选），记忆化按数据代次失效，撤档行标 `alive=false` | 需求"各功能都要有视图化管理页与菜单"；逐档页看不出全站体积与孤儿历史（§四 4.9） |
+| 19 使用体验与运维交付 | 桌面端批注栏标题横排（仅收起窄导轨竖排）、页眉去 `sheet-max` 居中改为铺满贴左；启动生成根目录 `口令.txt`（明文口令速查，gitignore + 打包排除，`BW_CRED_FILE=0` 可关）；新增 `USAGE.md` 使用说明书 + 详细 Nginx 建站指南 | 走查加两条几何断言（`writing-mode` 与页眉首元素距左），163→165；口令速查文件必须与 `.gitignore`/打包 FORBIDDEN 同步，否则公开仓库会泄露明文口令 |
 
 ---
 
