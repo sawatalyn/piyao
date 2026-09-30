@@ -187,7 +187,7 @@ node ops/verify-deploy.mjs https://你的域名 --expect-prod --mutate --user ad
 node scripts/pin-guard.mjs         # 依赖守卫：精确 pin / 许可白名单 / 用途登记，不绿就别上线
 node scripts/api-smoke.mjs         # 48 项接口自检（权限、置顶唯一、净化、限流、签名直链、反爬、版本与馆务端点、全站版本台账总表）
 node scripts/full-sweep.mjs        # 218 项：另起 7 个隔离实例，含镜像口令门控、EPUB/PDF 阅览边界、预览白名单、版本台账与全站台账总表、媒体对账与出厂示例实体
-node scripts/walkthrough.mjs       # 163 项浏览器端到端走查 + 截图（需先起 Chrome 调试端口）
+node scripts/walkthrough.mjs       # 165 项浏览器端到端走查 + 截图（需先起 Chrome 调试端口）
 node scripts/browser-probe.mjs http://127.0.0.1:8787/   # 主线程是否阻塞 / 关键节点计数
 pnpm audit:ui                      # Yan 阵营界面契约（51 个前端文件）
 ```

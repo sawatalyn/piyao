@@ -13,6 +13,7 @@ import { mediaRouter } from './routes/media.js';
 import { resourceRouter } from './routes/resources.js';
 import { libraryRouter } from './routes/library.js';
 import { opsRouter } from './routes/ops.js';
+import { writeCredentialsNote } from './security/credentialsNote.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const DIST = path.resolve(here, '../../web/dist');
@@ -94,6 +95,8 @@ const server = app.listen(config.port, config.host, () => {
   console.log(`辨妄阁 API 已启动： http://${config.host}:${config.port}`);
   console.log(`数据目录： ${path.resolve(config.paths.posts, '..')}`);
   console.log(`口令存储： ${config.hashPasswords ? 'scrypt 哈希' : 'CSV 明文（按需求指定）'}`);
+  const credFile = writeCredentialsNote();
+  if (credFile) console.log(`口令速查： ${credFile}（含明文口令，勿提交/分发；BW_CRED_FILE=0 可关）`);
   if (!fs.existsSync(DIST)) console.log('提示：未检测到 web/dist，仅暴露 API。前端开发服务请用 pnpm dev:web。');
 });
 

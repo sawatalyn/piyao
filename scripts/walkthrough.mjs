@@ -1557,6 +1557,29 @@ async function main() {
   await viewport(1440, 960);
   await sleep(500);
 
+  // ---------- 11b. 桌面端外壳几何：批注栏标题横排 + header 不居中缩进 ----------
+  await cdp.send('Page.navigate', { url: `${SITE}/` });
+  await waitFor('document.querySelectorAll(".post-card").length > 0', 8000, '首页卡片');
+  await sleep(300);
+  const geo = JSON.parse(await evaluate(`JSON.stringify({
+    marginOpen: document.querySelector('.shell')?.dataset.marginOpen,
+    labelMode: getComputedStyle(document.querySelector('.vertical-label')).writingMode,
+    headMax: getComputedStyle(document.querySelector('.head-bar')).maxInlineSize || getComputedStyle(document.querySelector('.head-bar')).maxWidth,
+    firstLeft: Math.round(document.querySelector('.head-bar > *')?.getBoundingClientRect().left ?? -1),
+    barWidth: Math.round(document.querySelector('.head-bar')?.getBoundingClientRect().width ?? -1),
+    winWidth: window.innerWidth,
+  })`));
+  check(
+    '桌面端展开批注栏时标题横向排布（不再竖着占一整列高）',
+    geo.marginOpen === 'true' && /horizontal/.test(geo.labelMode),
+    `marginOpen=${geo.marginOpen} · writing-mode=${geo.labelMode}`
+  );
+  check(
+    '页眉铺满整幅、贴左对齐，不再被居中到阅读栏宽度而过度缩进',
+    geo.headMax === 'none' && geo.firstLeft >= 0 && geo.firstLeft < 80 && geo.barWidth > geo.winWidth * 0.9,
+    `max-inline-size=${geo.headMax} · 首个元素距左 ${geo.firstLeft}px · 页眉宽 ${geo.barWidth}/${geo.winWidth}`
+  );
+
   // ---------- 12. 权限：登出后写路径不可用 ----------
   await evaluate(`[...document.querySelectorAll('button')].find(b => b.textContent.includes('登出')).click(), true`);
   await sleep(900);

@@ -160,9 +160,9 @@ time {
 }
 
 .vertical-label {
-  writing-mode: vertical-rl;
+  writing-mode: horizontal-tb;
   font-family: var(--font-display);
-  letter-spacing: 0.42em;
+  letter-spacing: 0.12em;
   color: var(--ink-mute);
   font-size: var(--text-small);
 }

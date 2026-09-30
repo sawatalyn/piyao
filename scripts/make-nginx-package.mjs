@@ -29,7 +29,7 @@ const WRITE = process.argv.includes('--write');
 const ZIP_IT = process.argv.includes('--zip');
 
 /** 绝不进包的东西：密钥、活会话、审计日志、锁定计数，以及本机跑出来的验收报告（含来源 IP 与路径） */
-const FORBIDDEN = new Set(['.secret', 'sessions.json', 'security.log', 'login-attempts.json']);
+const FORBIDDEN = new Set(['.secret', 'sessions.json', 'security.log', 'login-attempts.json', '口令.txt']);
 const FORBIDDEN_PATTERNS = [/^verify-report-.*\.md$/];
 const norm = (p) => path.basename(p).replace(/^security\.log.*/, 'security.log');
 /**
@@ -60,7 +60,7 @@ function walk(dir, base = dir, out = [], keepForbidden = false) {
   return out;
 }
 
-const DOCS = ['README.md', 'DEPLOY.md', 'DEVELOPMENT.md', 'THIRD_PARTY_NOTICES.md'];
+const DOCS = ['README.md', 'DEPLOY.md', 'DEVELOPMENT.md', 'THIRD_PARTY_NOTICES.md', 'USAGE.md'];
 
 /**
  * 后端运行时**每次打包现做**，不复用旧产物。
@@ -74,7 +74,7 @@ const plan = [
   { to: 'web/dist', from: path.join(ROOT, 'web', 'dist'), kind: '前端产物：Nginx 的 root 指这里；后端在没有 Nginx 时也会按 api/../../web/dist 自己伺服（便于单机自测）' },
   { to: 'api', from: API_SRC, deployed: true, kind: '后端运行时（pnpm deploy --legacy --prod 现做；复制时解引用成实体目录，压缩包里不留符号链接）' },
   { to: 'nginx', from: path.join(ROOT, 'nginx'), kind: 'Nginx 站点与安全片段' },
-  { to: 'docs', from: ROOT, kind: '四份文档（README / DEPLOY / DEVELOPMENT / THIRD_PARTY_NOTICES）', picks: DOCS },
+  { to: 'docs', from: ROOT, kind: '五份文档（README / DEPLOY / DEVELOPMENT / THIRD_PARTY_NOTICES / USAGE）', picks: DOCS },
   { to: 'ops', from: path.join(ROOT, 'ops-extras'), kind: '起停与验收脚本、环境变量样例、systemd/任务计划样例' },
 ];
 
