@@ -178,6 +178,16 @@ NODE_ENV=production node server/src/index.js
 
 ## 7. Nginx 部署建站指南（从零到上线）
 
+> **先回答"能不能只用 Nginx"：不能。**
+> 本站后端是 **Node/Express 进程 + JSON 文件存储**，负责登录会话、CSRF、图片签名直链、HTML 净化、
+> 检索、EPUB/PDF 解析与在线阅览、审计日志等**动态逻辑**——Nginx 只是静态服务器 + 反向代理，**没有 JS 运行时，跑不了这些**。
+> 所以部署形态固定为：**Nginx（静态托管 + 反代 + TLS）+ 一个常驻的 Node 后端进程**。
+>
+> - 放进 **Nginx html 根**的，只有前端产物 **`web/dist/`**（`index.html` + `assets/`）——静态部分单独打包见交付物 `nginx-html-webdist.zip`。
+> - 后端 **`api/`（或仓库 `server/`）** 必须用 `node` 常驻运行（systemd / 任务计划 / nssm），Nginx 通过 `proxy_pass http://127.0.0.1:8787` 把 `/api/…` 转给它。
+> - 极端省事：不装 Nginx 也能跑——`api/` 里的 Express 会**同时伺服 `web/dist` 与 API**（单机自测模式，见 §0）。
+>   但生产仍建议 Nginx 前置，拿 TLS、频控、静态长缓存与数据目录隔离。
+
 **架构**：Nginx 只做静态托管 + 反向代理；Node 后端只监听 `127.0.0.1:8787`；数据以 JSON/CSV 落在服务端目录。
 
 ```
