@@ -1,6 +1,6 @@
 {
   "name": "bianwang-archive",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "辨妄阁 · 辟谣档案库 — Vue3 + Vite8 + Pinia4 + Vue Router 5 前端，JSON 文件存储后端，Nginx 托管",
   "packageManager": "pnpm@11.1.3",

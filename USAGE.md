@@ -467,7 +467,7 @@ imported from ...\server\node_modules\express-rate-limit\dist\index.mjs
 
 | 做法 | 怎么做 | 适用 |
 | --- | --- | --- |
-| **用部署包**（推荐） | 把 `bianwang-1.1.0-nginx.zip` 整个解压到目标机，用里面的 `api/` 起。`api/node_modules` 是 `pnpm deploy` 产出的**自足、无软链接**目录，拷机拷得动 | 生产部署、给别人一套能跑的 |
+| **用部署包**（推荐） | 把 `bianwang-<版本>-nginx.zip` 整个解压到目标机，用里面的 `api/` 起。`api/node_modules` 是 `pnpm deploy` 产出的**自足、无软链接**目录，拷机拷得动 | 生产部署、给别人一套能跑的 |
 | 目标机上装依赖 | 把**整个仓库**（含根 `package.json`、`pnpm-lock.yaml`、`.npmrc`）拷过去，在**根目录**跑 `pnpm install --frozen-lockfile`，再 `pnpm build` | 目标机能联网/有代理 |
 | 连根 `node_modules` 一起拷 | 必须连 `node_modules/.pnpm` 整棵树一起拷，且 Windows 上要保证软链接不被解引用（普通压缩会破坏它） | 不推荐，容易再踩 |
 

@@ -2,7 +2,7 @@
 /**
  * 出包后回读：逐件比对仓库与包内树的字节，证明"包内文本＝仓库文本"。
  * 用法：node scripts/check-package-parity.mjs [包树路径]
- * 默认 outputs/package/bianwang-1.1.0-offline-win（＝NSIS 解包后的落点，含站点那半）
+ * 默认 outputs/package/bianwang-<package.json 的版本>-offline-win（＝NSIS 解包后的落点，含站点那半）
  *
  * 为什么要有这一步：闸门校验的是字节与清单，校不出"文字还是上一轮形态的"（A-31），
  * 也校不出改了 `server/` 却没重拷进包（本轮 E-10 就同时落在两侧）。所以出完包必须回读。
@@ -13,7 +13,9 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
-const TREE = path.resolve(process.argv[2] || path.join(ROOT, 'outputs/package/bianwang-1.1.0-offline-win'));
+// 版本从 package.json 读，不写死：升版时如果这里还指着旧树，比的就不是当轮交付物
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+const TREE = path.resolve(process.argv[2] || path.join(ROOT, 'outputs', 'package', `bianwang-${VERSION}-offline-win`));
 const sha = (p) => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 
 // 仓库路径 → 包内路径
