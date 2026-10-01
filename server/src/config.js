@@ -54,6 +54,18 @@ export const config = {
   writeLimitPerMinute: Number(process.env.BW_WRITE_LIMIT_PER_MIN || 40),
   cookieName: 'bw_sid',
   csrfHeader: 'x-bw-csrf',
+  /**
+   * TLS：默认**关**（生产暂无证书时按需求用 HTTP 起站）。
+   * 给了 BW_TLS_PFX（可配 BW_TLS_PFX_PASS）或成对的 BW_TLS_KEY/BW_TLS_CERT 才用 https 监听；
+   * 给了其中一样但文件读不到，后端会**拒绝启动并说明原因**，不会悄悄退回明文——
+   * 否则操作员以为站点加密了，实际没有。
+   */
+  tls: {
+    pfx: process.env.BW_TLS_PFX || null,
+    pfxPass: process.env.BW_TLS_PFX_PASS || '',
+    key: process.env.BW_TLS_KEY || null,
+    cert: process.env.BW_TLS_CERT || null,
+  },
   mediaDir: MEDIA_DIR,
   libraryDir: LIBRARY_DIR,
   paths: {

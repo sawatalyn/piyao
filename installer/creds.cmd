@@ -37,8 +37,10 @@ set "RC=%ERRORLEVEL%"
 if "%RC%"=="2" (
   echo.
   echo     To make it appear, start the site:
-  echo         node "%SELF%..\api\src\index.js"
-  echo     or double-click  dashboard\BianwangDashboard.exe  and press start.
+  echo         "%SELF%run-site.cmd"
+  echo     (it picks the runtime itself - bundled in the offline package, node on
+  echo      PATH in the zip form) - or double-click
+  echo      dashboard\BianwangDashboard.exe  and press start.
 )
 if "%RC%"=="1" (
   echo.

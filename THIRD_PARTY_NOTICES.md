@@ -55,6 +55,34 @@
 | 与净化链路的关系 | 编辑器的 HTML 由本站 `server/src/security/sanitize.js` 白名单二次净化后落库；不依赖 CKEditor 的 `GeneralHtmlSupport`（付费件）来放开自定义 class，批注形制走 `span.anno-*` + `c-*` 预置 class，因此严格 CSP 下无需行内样式 |
 | 界面语言 | 取包内自带简体词典 `ckeditor5/dist/translations/zh-cn.js`（同属 GPL-2.0-or-later 的许可范围内数据，非独立第三方作品），随编辑页分包打进构建物；该文件是纯数据默认导出，需在创建实例前并入 `window.CKEDITOR_TRANSLATIONS`，故 `RichEditor` 里有一处显式挂载 |
 
+### 1.2 离线安装包：随包运行时与出包工具链
+
+| 名称 | 版本 | 协议 | 在不在交付物里 | 角色与一手依据 |
+| --- | --- | --- | --- | --- |
+| Electron 官方 Windows x64 运行包 | 44.5.1 | MIT | **在**（`runtime\`，改名 `BianwangRuntime.exe`） | 既作装机机上的 Node 运行时（内建 Node 24.21.0，`ELECTRON_RUN_AS_NODE=1`），又作图形安装器的宿主。许可文本随包：`runtime\LICENSE`（MIT 全文）与 `runtime\LICENSES.chromium.html`（Chromium 及其第三方清单，20 MB，逐字取自 zip 内原件，未改写） |
+| Chromium / V8 | 152.0.7977.130 / 15.2.124.28 | BSD-3-Clause 系 / 类 BSD | 在（作为 Electron 二进制的组成部分） | 只在"运行安装器界面"时被用到；站点本身不加载任何浏览器内核。明细归属见上面那份 `LICENSES.chromium.html` |
+| Node.js（Electron 内建那一份） | 24.21.0 | MIT | 在（同上） | 后端进程的真身。与开发机上的 24.14.1 是两个独立分发，各自记一行 |
+| NSIS | 3.12（bundle 标记 `v21-Jun-2026.cvs`） | zlib/libpng | **不在**（只在本机编译 `installer\offline.nsi` 时用） | 把整棵树压成单个自解压 exe。压缩器固定 `zlib`：该 bundle 的 `windows\COPYING` 第 13–17 行写明 zlib 模块与 NSIS 本体同为 zlib/libpng，而 **LZMA 模块是 Common Public License 1.0、bzip2 模块是 bzip2 许可**——按本项目"只采纳宽松许可"的规矩，用哪个压缩器不是性能问题而是许可问题，要换得先单独取得批准 |
+
+**取用与校验（出包脚本按声明值核对，对不上就停）**：
+
+| 文件 | 字节 | sha256 | 出处 |
+| --- | --- | --- | --- |
+| `electron-v44.5.1-win32-x64.zip` | 157,998,329 | `9b382492dcfee91f8f9e92c91f7972550a1b95d2299cac72279dab33a600d7db` | Electron 官方 GitHub Release `v44.5.1`；与随 release 的 `SHASUMS256.txt` 逐字一致 |
+| `nsis-bundle-3.12.tar.gz` | 6,227,143 | `fe36a357f3a220db893498e830fd80e0769768a18a99f4e4d2447b982538feed` | `electron-userland/electron-builder-binaries` 的 `nsis@2.0.1` release |
+
+> NSIS 为什么走这个镜像：2026-10-01 本机出包时 SourceForge 的项目下载页与其六个命名镜像**全部返回 522 或握手失败**，
+> 官方通道当时取不到包。该 bundle 是 MinGW 交叉编译的重打包（`windows\VERSION.txt` 里写着 `Source branch: e3f60402…`、
+> `Compiler: MinGW-w64 (cross-compiled on Linux)`），**不是 NSIS 项目自己发布的原件**——这一点如实记下。
+> 等 SourceForge 恢复后应改回官方 `nsis-3.x.zip` 并更新本表；两者都只是构建期工具，不进交付物，
+> 但"用谁的二进制编译出你交付的 exe"是要能回答的问题。
+> 缓存目录在仓库之外（`%LOCALAPPDATA%\bianwang-offline-cache`），公开仓库里不放任何第三方二进制。
+
+**明确不用的东西**：`electron-builder`（会拖 `7zip-bin` 的 7z 可执行文件与自带 NSIS 二进制，且引入一整条 npm 依赖链）、
+`electron-packager`（只产目录、不产单文件安装包，却要引 20+ 传递依赖动依赖守卫台账）、`electron` 这个 npm 包本身
+（装它只为拿同一个 zip，代价是 postinstall 下载与一堆 `@electron/*` 传递依赖）。
+三者都换成"按校验值取官方 zip + 自己拷改名 + 系统自带的 `tar.exe` 解压"，一行 npm 依赖都没加。
+
 ### 运行时与部署件
 
 | 名称 | 版本 | 协议 | 角色 |

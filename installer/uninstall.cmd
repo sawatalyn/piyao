@@ -173,7 +173,7 @@ if defined DATABAK (
 rem ---- 1. stop the process holding the port ----
 echo.
 echo [*] Stopping the backend...
-powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'api.src.index.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Output ('stopped pid ' + $_.ProcessId) }"
+powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \"Name='node.exe' OR Name='BianwangRuntime.exe'\" | Where-Object { $_.CommandLine -match 'api.src.index.js' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; Write-Output ('stopped pid ' + $_.ProcessId) }"
 if errorlevel 1 echo [ ] no backend process was running
 taskkill /IM BianwangDashboard.exe /F 1>nul 2>nul
 if not errorlevel 1 echo [ok] closed the dashboard window

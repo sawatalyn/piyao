@@ -54,7 +54,7 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
   clearAttempt(ipKey);
   clearAttempt(nameKey);
   const record = sessionStore.create(identity);
-  sessionCookie(res, record.id, Math.floor(config.sessionTtlMs / 1000));
+  sessionCookie(res, record.id, Math.floor(config.sessionTtlMs / 1000), Boolean(req.secure));
   req.session = record;
   audit('login-ok', { as: identity.username }, req);
   return res.json({ user: record.user, csrfToken: record.csrf, issuedAt: new Date().toISOString() });
@@ -63,7 +63,7 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
 authRouter.post('/auth/logout', (req, res) => {
   const id = req.cookies?.[config.cookieName];
   if (id) sessionStore.destroy(id);
-  clearSessionCookie(res);
+  clearSessionCookie(res, Boolean(req.secure));
   res.json({ ok: true });
 });
 

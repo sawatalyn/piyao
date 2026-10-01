@@ -23,11 +23,12 @@ const clock = (iso) => {
   return Number.isNaN(d.getTime()) ? String(iso) : d.toLocaleString('zh-CN', { hour12: false });
 };
 
-export function renderCredentials() {
+export function renderCredentials(scheme = 'http') {
   const lines = [];
   lines.push('辨妄阁 · 本地口令速查（启动时自动生成）');
   lines.push('='.repeat(48));
   lines.push(`生成时间：${new Date().toLocaleString('zh-CN', { hour12: false })}`);
+  lines.push(`访问协议：${scheme}（本次启动实际监听的协议；改协议在仪表盘第 1 栏或设 BW_TLS_*）`);
   lines.push(`数据目录：${path.dirname(config.paths.posts)}`);
   lines.push(`口令存储：${config.hashPasswords ? 'scrypt 哈希（BW_HASH_PASSWORDS=1）' : 'CSV 明文（按需求指定）'}`);
   lines.push('');
@@ -58,15 +59,19 @@ export function renderCredentials() {
   lines.push('  1) 本文件含明文口令，仅供本机查阅。它已被 .gitignore 与打包排除，请勿手动提交或分发。');
   lines.push('  2) 上生产前请删除本文件、改掉默认 admin/admin，并按需用 BW_HASH_PASSWORDS=1 切哈希。');
   lines.push('  3) 关掉此功能：设环境变量 BW_CRED_FILE=0。');
+  if (scheme === 'http') {
+    lines.push('  4) 本次以 **明文 HTTP** 起站（当前无证书的已知取舍）：口令与会话在内网链路可被读到，'
+      + '请只在受信网段放行；拿到证书后设 BW_TLS_PFX（或 BW_TLS_KEY + BW_TLS_CERT）重启即切 https。');
+  }
   lines.push('');
   return `${lines.join('\r\n')}\r\n`;
 }
 
-export function writeCredentialsNote() {
+export function writeCredentialsNote(scheme = 'http') {
   if (process.env.BW_CRED_FILE === '0') return null;
   const target = credentialsPath();
   try {
-    fs.writeFileSync(target, renderCredentials(), { encoding: 'utf8', mode: 0o600 });
+    fs.writeFileSync(target, renderCredentials(scheme), { encoding: 'utf8', mode: 0o600 });
     return target;
   } catch (err) {
     console.warn('[api] 未能写入口令速查文件：', err?.message || err);

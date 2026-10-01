@@ -12,6 +12,10 @@
 //   2) 运行环境（Node / pnpm / 依赖 / 前端产物 / 演示数据）逐项体检，缺什么
 //      说什么，并给官方下载页直链；只有"项目自己的"动作（装依赖、构建、灌种子）
 //      才代跑，装系统级软件一律交回用户点确认。
+//   3) 全局访问协议（HTTP / HTTPS）在本程序第 1 栏选，**默认 HTTP**（生产暂无证书）。
+//      选 HTTPS 还要定"谁终结 TLS"：本机后端持证书（可用自带 PowerShell 一键出自签证书），
+//      或前置 Nginx 终结（后端仍只听明文回环）。这条选择会写进 dashboard.cfg，
+//      被 run-site.cmd 与安装器一起读，所以它不是界面标签，是真的换监听方式。
 //
 // 语言级别：csc 4.0.30319 = C# 5，因此不使用字符串插值、?.、=>、nameof。
 // ============================================================================
@@ -23,6 +27,7 @@ using System.Drawing.Text;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
@@ -49,6 +54,20 @@ namespace Bianwang.Launcher
         public string ServerDir;
         public string WebDistIndex;
         public bool FromPackage;       // true = 部署包里的 api/，false = 仓库源码
+        // 离线安装包随带 runtime\BianwangRuntime.exe：那是 Electron 的可执行文件改名，
+        // 配上 ELECTRON_RUN_AS_NODE=1 就是本机唯一的 Node 运行时（内建 24.21.0）。
+        // 有这个文件就不该再去 PATH 上找 node.exe——装机机上往往根本没装 Node。
+        // installer\runtime.cmd 是同一条判定的批处理版本，两处口径必须一致。
+        public string BundledRuntime;
+
+        public bool NodeBundled { get { return BundledRuntime != null; } }
+        public string NodeExe { get { return NodeBundled ? BundledRuntime : "node.exe"; } }
+
+        static string FindBundledRuntime(string root)
+        {
+            string p = Path.Combine(root, "runtime", "BianwangRuntime.exe");
+            return File.Exists(p) ? p : null;
+        }
 
         // 依次向上找：exe 可能在 dashboard\bin\，也可能被用户搬到别处
         public static Paths Locate()
@@ -75,7 +94,8 @@ namespace Bianwang.Launcher
                                 Root = dir.FullName,
                                 ServerDir = repoServer,
                                 WebDistIndex = Path.Combine(dir.FullName, "web", "dist", "index.html"),
-                                FromPackage = false
+                                FromPackage = false,
+                                BundledRuntime = FindBundledRuntime(dir.FullName)
                             };
                         }
                         if (File.Exists(Path.Combine(pkgApi, "src", "index.js")))
@@ -85,7 +105,8 @@ namespace Bianwang.Launcher
                                 Root = dir.FullName,
                                 ServerDir = pkgApi,
                                 WebDistIndex = Path.Combine(dir.FullName, "web", "dist", "index.html"),
-                                FromPackage = true
+                                FromPackage = true,
+                                BundledRuntime = FindBundledRuntime(dir.FullName)
                             };
                         }
                         dir = dir.Parent;
@@ -133,6 +154,18 @@ namespace Bianwang.Launcher
         bool autostartWritebackSuppressed;
         int lastPort = 8787;
 
+        // 全局访问协议（需求 3）：HTTP 是默认，HTTPS 是显式选择
+        RadioButton httpRadio;
+        RadioButton httpsRadio;
+        RadioButton tlsNodeRadio;
+        RadioButton tlsProxyRadio;
+        Panel tlsPane;
+        TextBox pfxBox;
+        Button certButton;
+        Label schemeHint;
+        bool schemeWritebackSuppressed;
+        readonly Dictionary<string, string> cfg = new Dictionary<string, string>();
+
         public MainForm(bool autostart)
         {
             autostartArg = autostart;
@@ -140,6 +173,7 @@ namespace Bianwang.Launcher
             configDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppDir);
             configFile = Path.Combine(configDir, "dashboard.cfg");
+            LoadCfg();
             BuildShell();
             RefreshEnv();
 
@@ -161,36 +195,337 @@ namespace Bianwang.Launcher
             }
         }
 
-        // ---------------- 配置 ----------------
-        int ReadRememberedPort()
+        // ---------------- 配置（port / scheme / tls_from / tls_pfx 同处一份，谁都不能只写自己那行） ----------------
+        void LoadCfg()
         {
+            cfg.Clear();
             try
             {
+                if (!File.Exists(configFile)) return;
                 string[] lines = File.ReadAllLines(configFile);
                 for (int i = 0; i < lines.Length; i++)
                 {
-                    if (lines[i].StartsWith("port="))
-                    {
-                        int v;
-                        if (int.TryParse(lines[i].Substring(5).Trim(), out v) && v >= 1 && v <= 65535) return v;
-                    }
+                    int eq = lines[i].IndexOf('=');
+                    if (eq <= 0) continue;
+                    cfg[lines[i].Substring(0, eq).Trim()] = lines[i].Substring(eq + 1).Trim();
                 }
             }
             catch (Exception) { }
+        }
+
+        string CfgValue(string key, string fallback)
+        {
+            string v;
+            if (cfg.TryGetValue(key, out v) && !string.IsNullOrEmpty(v)) return v;
+            return fallback;
+        }
+
+        void SaveCfg()
+        {
+            try
+            {
+                Directory.CreateDirectory(configDir);
+                System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                string[] keys = new string[] { "port", "scheme", "tls_from", "tls_pfx" };
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    string v;
+                    if (cfg.TryGetValue(keys[i], out v) && v.Length > 0)
+                        sb.Append(keys[i]).Append('=').Append(v).Append(Environment.NewLine);
+                }
+                // 认不出的键也留着：别的脚本往里写过的东西不该被界面一次保存抹掉
+                foreach (KeyValuePair<string, string> kv in cfg)
+                {
+                    bool known = false;
+                    for (int i = 0; i < keys.Length; i++) if (keys[i] == kv.Key) known = true;
+                    if (!known && kv.Value.Length > 0)
+                        sb.Append(kv.Key).Append('=').Append(kv.Value).Append(Environment.NewLine);
+                }
+                File.WriteAllText(configFile, sb.ToString(), new System.Text.UTF8Encoding(false));
+            }
+            catch (Exception ex)
+            {
+                Log("[!] 配置写不进去（不影响本次运行）：" + ex.Message);
+            }
+            SyncSchemeUi();
+        }
+
+        void SetCfg(string key, string value)
+        {
+            cfg[key] = value ?? string.Empty;
+            SaveCfg();
+        }
+
+        /// <summary>证书包位置：框里填的优先（可以是已有的 pfx），否则用本机默认路径。</summary>
+        string TlsPfxPath
+        {
+            get
+            {
+                if (pfxBox != null)
+                {
+                    string t = (pfxBox.Text ?? string.Empty).Trim();
+                    if (t.Length > 0) return t;
+                }
+                return CfgValue("tls_pfx", DefaultPfxPath);
+            }
+        }
+        string DefaultPfxPath { get { return Path.Combine(configDir, "tls", "bianwang-selfsigned.pfx"); } }
+
+        int ReadRememberedPort()
+        {
+            int v;
+            if (int.TryParse(CfgValue("port", ""), out v) && v >= 1 && v <= 65535) return v;
             return -1;
         }
 
         void WriteRememberedPort(int port)
         {
+            cfg["port"] = port.ToString();
+            SaveCfg();
+        }
+
+        // ---------------- 全局访问协议 ----------------
+        bool SchemeIsHttps
+        {
+            get { return httpsRadio != null && httpsRadio.Checked; }
+        }
+
+        bool TlsAtBackend
+        {
+            get { return tlsNodeRadio != null && tlsNodeRadio.Checked; }
+        }
+
+        /// <summary>后端要不要以 TLS 监听：只有"HTTPS + 本机后端终结 + 证书就位"三条同时成立。</summary>
+        bool BackendWantsTls()
+        {
+            return SchemeIsHttps && TlsAtBackend && File.Exists(TlsPfxPath);
+        }
+
+        string SiteUrl(int port, string host)
+        {
+            if (!SchemeIsHttps) return "http://" + host + ":" + port + "/";
+            if (TlsAtBackend) return "https://" + host + ":" + port + "/";
+            // 前置 Nginx 终结：对外地址不带后端端口（443 是 Nginx 在听），0.0.0.0 也不能当地址用
+            string publicHost = host == "0.0.0.0" || host == "::" ? "127.0.0.1" : host;
+            return "https://" + publicHost + "/";
+        }
+
+        void LoadSchemeFromCfg()
+        {
+            schemeWritebackSuppressed = true;
             try
             {
-                Directory.CreateDirectory(configDir);
-                File.WriteAllText(configFile, "port=" + port + Environment.NewLine);
+                bool https = CfgValue("scheme", "http") == "https";
+                httpsRadio.Checked = https;
+                httpRadio.Checked = !https;
+                bool proxy = CfgValue("tls_from", "node") == "nginx";
+                tlsProxyRadio.Checked = proxy;
+                tlsNodeRadio.Checked = !proxy;
+                string pfx = CfgValue("tls_pfx", "");
+                if (pfx.Length > 0) pfxBox.Text = pfx;
+            }
+            finally { schemeWritebackSuppressed = false; }
+        }
+
+        void OnSchemeChanged()
+        {
+            if (schemeWritebackSuppressed) return;
+            cfg["scheme"] = httpsRadio.Checked ? "https" : "http";
+            SaveCfg();
+            WarnSchemeNeedsRestart();
+        }
+
+        void OnTlsTerminatorChanged()
+        {
+            if (schemeWritebackSuppressed) return;
+            cfg["scheme"] = httpsRadio.Checked ? "https" : "http";
+            cfg["tls_from"] = tlsProxyRadio.Checked ? "nginx" : "node";
+            SaveCfg();
+            WarnSchemeNeedsRestart();
+        }
+
+        void WarnSchemeNeedsRestart()
+        {
+            if (backend == null || backend.HasExited) return;
+            int port;
+            string host;
+            if (!PortReady(out port, out host)) port = lastPort > 0 ? lastPort : 0;
+            if (port <= 0) return;
+            Log("[!] 协议设置已改，但**本次监听不会中途换**：现在的进程还在 " + SiteUrl(port, host)
+                + " 上，点「停止」再起一次才切过去。");
+        }
+
+        void SyncSchemeUi()
+        {
+            if (tlsPane == null || schemeHint == null) return;
+            bool https = httpsRadio.Checked;
+            tlsPane.Visible = https;
+            bool atBackend = tlsNodeRadio.Checked;
+            pfxBox.Visible = atBackend;
+            certButton.Visible = atBackend;
+
+            string hint;
+            if (!https)
+            {
+                hint = "默认档。内网直连就能用，但链路不加密：口令与正文在网线上是明文，别朝公网开。";
+            }
+            else if (atBackend)
+            {
+                string pfx = TlsPfxPath;
+                hint = File.Exists(pfx)
+                    ? "node 用这个证书包直接以 TLS 监听（自签＝浏览器会先告警，只适合内网/自用）。"
+                    : "还没有证书：点右边按钮用系统自带 PowerShell 出一张自签的，或把已有的 pfx 路径填进来。";
+                if (HasNonAscii(pfx))
+                    hint += " 证书路径含中文：run-site.cmd（开机自启那条）按 OEM 码页读不到它，请改用纯英文路径。";
+            }
+            else
+            {
+                hint = "后端仍按明文 HTTP 只监听回环，https 由前置 Nginx 的 443 + 证书提供；"
+                    + "本程序只管访问地址，不校验 Nginx 是否已经配好。";
+            }
+            schemeHint.Text = hint;
+        }
+
+        static bool HasNonAscii(string s)
+        {
+            if (s == null) return false;
+            for (int i = 0; i < s.Length; i++) if (s[i] > 127) return true;
+            return false;
+        }
+
+        /// <summary>证书包的一句话明细（只读公钥信息，读不动就退化成体积）。</summary>
+        static string CertBrief(string pfxPath)
+        {
+            try
+            {
+                using (X509Certificate2 c = new X509Certificate2(pfxPath, string.Empty))
+                {
+                    return "到期 " + c.GetExpirationDateString() + " · " + c.Subject;
+                }
+            }
+            catch (Exception)
+            {
+                try { return new FileInfo(pfxPath).Length + " 字节（明细读不出，可能被别处占用）"; }
+                catch (Exception) { return "明细读不出"; }
+            }
+        }
+
+        // ---------------- 自签证书（只用系统自带的 PowerShell，不引第三方） ----------------
+        static readonly string SelfSignedScript = string.Join("\r\n", new string[]
+        {
+            "$ErrorActionPreference = 'Stop'",
+            "$pfx = $args[0]",
+            "$dir = Split-Path -Parent $pfx",
+            "if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }",
+            "$cn = [string](Get-ItemProperty 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\ComputerName\\ComputerName' -Name ComputerName).ComputerName",
+            "$dns = @('localhost', $cn) + ($args | Select-Object -Skip 1 | Where-Object { $_ })",
+            "$old = Get-ChildItem Cert:\\CurrentUser\\My -ErrorAction SilentlyContinue | Where-Object { $_.Subject -eq 'CN=Bianwang self-signed' }",
+            "foreach ($c in $old) { Remove-Item \"Cert:\\CurrentUser\\My\\$($c.Thumbprint)\" -ErrorAction SilentlyContinue }",
+            "$cert = New-SelfSignedCertificate -Subject 'CN=Bianwang self-signed' -DnsName $dns -CertStoreLocation 'Cert:\\CurrentUser\\My' -NotAfter (Get-Date).AddYears(1) -KeyExportPolicy Exportable -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 -KeyUsage DigitalSignature, KeyEncipherment -FriendlyName 'Bianwang local TLS'",
+            "if (Test-Path $pfx) { Remove-Item $pfx -Force }",
+            "$empty = New-Object System.Security.SecureString",
+            "Export-PfxCertificate -Cert \"Cert:\\CurrentUser\\My\\$($cert.Thumbprint)\" -FilePath $pfx -Password $empty | Out-Null",
+            "Write-Output ('OK thumbprint=' + $cert.Thumbprint + ' notAfter=' + $cert.NotAfter.ToString('yyyy-MM-dd') + ' dns=' + ($dns -join ','))",
+        });
+
+        void MakeSelfSignedCert()
+        {
+            string pfx = TlsPfxPath;
+            DialogResult ask = MessageBox.Show(
+                "自签证书要说清楚它是什么，再决定要不要生成：\r\n\r\n"
+                + "  · 浏览器会先弹「您的连接不是私密连接」——它不是公网可信证书，只适合内网/自用；\r\n"
+                + "  · 用的是 Windows 自带的 New-SelfSignedCertificate（当前用户证书库，不要管理员、不装第三方）；\r\n"
+                + "  · 私钥会落在下面这个文件，空口令导出，边界只有 NTFS 权限，别把它拷给别人：\r\n    "
+                + pfx + "\r\n\r\n"
+                + "正式对外站点请改用域名证书，或把 TLS 交给前置 Nginx。仍要现在生成吗？",
+                "辨妄阁 · 生成本机自签证书",
+                MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+            if (ask != DialogResult.Yes)
+            {
+                Log("[ ] 没有生成证书（对话框选了「否/取消」）。协议保持现状，什么都没改。");
+                return;
+            }
+
+            int port;
+            string host;
+            PortReady(out port, out host);
+            string extraSan = string.Empty;
+            if (host.Length > 0 && host != "127.0.0.1" && host != "0.0.0.0" && host != "::")
+                extraSan = host;
+
+            Log("[>] 生成自签证书（New-SelfSignedCertificate → 导出 pfx）…");
+            string scriptPath;
+            try
+            {
+                Directory.CreateDirectory(Path.Combine(configDir, "tls"));
+                scriptPath = Path.Combine(configDir, "tls", "make-selfsigned.ps1");
+                File.WriteAllText(scriptPath, SelfSignedScript, new System.Text.UTF8Encoding(true));
             }
             catch (Exception ex)
             {
-                Log("[!] 端口配置写不进去（不影响本次运行）：" + ex.Message);
+                Log("[✗] 证书脚本写不下去：" + ex.Message);
+                return;
             }
+
+            string arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + scriptPath + "\" \"" + pfx + "\""
+                + (extraSan.Length > 0 ? " \"" + extraSan + "\"" : string.Empty);
+            ThreadPool.QueueUserWorkItem(delegate
+            {
+                bool ok = false;
+                try
+                {
+                    ProcessStartInfo psi = new ProcessStartInfo("powershell.exe", arguments);
+                    psi.UseShellExecute = false;
+                    psi.RedirectStandardOutput = true;
+                    psi.RedirectStandardError = true;
+                    psi.CreateNoWindow = true;
+                    using (Process p = Process.Start(psi))
+                    {
+                        string o = p.StandardOutput.ReadToEnd();
+                        string e = p.StandardError.ReadToEnd();
+                        p.WaitForExit();
+                        if (o.Length > 0) LogLines(o);
+                        if (e.Length > 0) LogLines(e);
+                        ok = p.ExitCode == 0 && File.Exists(pfx);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log("[✗] 调不动 PowerShell：" + ex.Message);
+                }
+
+                if (ok)
+                {
+                    Log("[✓] 自签证书已就位：" + pfx);
+                    Log("[!] 提醒：自签=浏览器会告警，只适合内网/自用；正式站点请换域名证书或交给前置 Nginx。");
+                    try
+                    {
+                        BeginInvoke(new Action(delegate
+                        {
+                            schemeWritebackSuppressed = true;
+                            try
+                            {
+                                httpsRadio.Checked = true;
+                                tlsNodeRadio.Checked = true;
+                                pfxBox.Text = pfx;
+                            }
+                            finally { schemeWritebackSuppressed = false; }
+                            cfg["scheme"] = "https";
+                            cfg["tls_from"] = "node";
+                            cfg["tls_pfx"] = pfx;
+                            SaveCfg();
+                            RefreshEnv();
+                        }));
+                    }
+                    catch (Exception) { }
+                }
+                else
+                {
+                    Log("[✗] 证书没生成成功（见上面 PowerShell 原话）。协议没动，也不会因此起不来——"
+                        + "可以先改回 HTTP，或把已有的 pfx 路径填进证书框。");
+                }
+                try { File.Delete(scriptPath); } catch (Exception) { }
+            });
         }
 
 
@@ -234,8 +569,8 @@ namespace Bianwang.Launcher
             BackColor = PaperLeaf;
             ForeColor = InkSoft;
             Font = Ui(9F);
-            ClientSize = new Size(716, 700);
-            MinimumSize = new Size(690, 640);
+            ClientSize = new Size(716, 772);
+            MinimumSize = new Size(690, 700);
             StartPosition = FormStartPosition.CenterScreen;
             FormClosing += OnFormClosing;
 
@@ -278,11 +613,11 @@ namespace Bianwang.Launcher
             head.Controls.Add(sub);
             outer.Controls.Add(head, 0, 0);
 
-            // —— 端口区：需求 1 ——
+            // —— 端口与协议区：需求 1 + 需求 3 ——
             GroupBox portPane = new GroupBox();
-            portPane.Text = "运行端口（每次手动启动都要填）";
+            portPane.Text = "运行端口与全局访问协议（端口每次手动启动都要填；协议记住，改了要重启站点才生效）";
             portPane.Dock = DockStyle.Fill;
-            portPane.Height = 132;
+            portPane.Height = 204;
             portPane.ForeColor = SignalInk;
             portPane.BackColor = TerraField;
             outer.Controls.Add(portPane, 0, 1);
@@ -323,7 +658,7 @@ namespace Bianwang.Launcher
             hostBox.TextChanged += delegate { SyncButtonStates(); };
             portPane.Controls.Add(hostBox);
             Label hostHint = new Label();
-            hostHint.Text = "默认只监听回环，交给 Nginx 反代；改成 0.0.0.0 会直接对全网开放";
+            hostHint.Text = "默认只听回环，交给 Nginx 反代；填 0.0.0.0 就是直接对全网开放";
             hostHint.AutoSize = true;
             hostHint.ForeColor = InkMute;
             hostHint.Location = new Point(322, 30);
@@ -363,14 +698,99 @@ namespace Bianwang.Launcher
             stateLabel.Location = new Point(344, 71);
             portPane.Controls.Add(stateLabel);
 
+            // —— 全局访问协议（需求 3）：默认 HTTP，HTTPS 是显式选择，且必须说清谁终结 TLS ——
+            Label sl = new Label();
+            sl.Text = "访问协议";
+            sl.AutoSize = true;
+            sl.ForeColor = InkSoft;
+            sl.Location = new Point(14, 106);
+            portPane.Controls.Add(sl);
+
+            httpRadio = new RadioButton();
+            httpRadio.Text = "HTTP";
+            httpRadio.AutoSize = true;
+            httpRadio.ForeColor = InkSoft;
+            httpRadio.BackColor = Color.Transparent;
+            httpRadio.Location = new Point(74, 104);
+            httpRadio.Checked = true;
+            httpRadio.Click += delegate { OnSchemeChanged(); };
+            portPane.Controls.Add(httpRadio);
+
+            httpsRadio = new RadioButton();
+            httpsRadio.Text = "HTTPS";
+            httpsRadio.AutoSize = true;
+            httpsRadio.ForeColor = InkSoft;
+            httpsRadio.BackColor = Color.Transparent;
+            httpsRadio.Location = new Point(142, 104);
+            httpsRadio.Click += delegate { OnSchemeChanged(); };
+            portPane.Controls.Add(httpsRadio);
+
+            schemeHint = new Label();
+            schemeHint.Text = "";
+            schemeHint.AutoSize = true;
+            schemeHint.ForeColor = InkMute;
+            schemeHint.Location = new Point(224, 106);
+            schemeHint.MaximumSize = new Size(460, 0);
+            portPane.Controls.Add(schemeHint);
+
+            tlsPane = new Panel();
+            tlsPane.Location = new Point(14, 128);
+            tlsPane.Size = new Size(672, 34);
+            tlsPane.BackColor = Color.Transparent;
+            portPane.Controls.Add(tlsPane);
+
+            Label tl = new Label();
+            tl.Text = "TLS 由谁终结";
+            tl.AutoSize = true;
+            tl.ForeColor = InkSoft;
+            tl.Location = new Point(0, 8);
+            tlsPane.Controls.Add(tl);
+
+            tlsNodeRadio = new RadioButton();
+            tlsNodeRadio.Text = "本机后端持证书";
+            tlsNodeRadio.AutoSize = true;
+            tlsNodeRadio.ForeColor = InkSoft;
+            tlsNodeRadio.BackColor = Color.Transparent;
+            tlsNodeRadio.Location = new Point(84, 6);
+            tlsNodeRadio.Checked = true;
+            tlsNodeRadio.Click += delegate { OnTlsTerminatorChanged(); };
+            tlsPane.Controls.Add(tlsNodeRadio);
+
+            tlsProxyRadio = new RadioButton();
+            tlsProxyRadio.Text = "前置 Nginx";
+            tlsProxyRadio.AutoSize = true;
+            tlsProxyRadio.ForeColor = InkSoft;
+            tlsProxyRadio.BackColor = Color.Transparent;
+            tlsProxyRadio.Location = new Point(206, 6);
+            tlsProxyRadio.Click += delegate { OnTlsTerminatorChanged(); };
+            tlsPane.Controls.Add(tlsProxyRadio);
+
+            pfxBox = new TextBox();
+            pfxBox.Location = new Point(310, 4);
+            pfxBox.Width = 236;
+            pfxBox.BackColor = PaperLeaf;
+            pfxBox.TextChanged += delegate { SyncSchemeUi(); };
+            tlsPane.Controls.Add(pfxBox);
+
+            certButton = new Button();
+            certButton.Text = "生成本机自签证书";
+            certButton.Location = new Point(552, 2);
+            certButton.Size = new Size(118, 27);
+            certButton.FlatStyle = FlatStyle.Flat;
+            certButton.FlatAppearance.BorderColor = RuleQuiet;
+            certButton.Click += delegate { MakeSelfSignedCert(); };
+            tlsPane.Controls.Add(certButton);
+
             autostartCheck = new CheckBox();
-            autostartCheck.Text = "登录 Windows 后自动起站（沿用上次端口，开机不再问）";
+            autostartCheck.Text = "登录 Windows 后自动起站（沿用上次端口与协议，开机不再问）";
             autostartCheck.AutoSize = true;
             autostartCheck.ForeColor = InkSoft;
-            autostartCheck.Location = new Point(14, 103);
+            autostartCheck.Location = new Point(14, 170);
             autostartCheck.CheckedChanged += OnAutostartToggled;
             portPane.Controls.Add(autostartCheck);
+            LoadSchemeFromCfg();
             SyncAutostartCheckbox();
+            SyncSchemeUi();
 
             // —— 环境区：需求 2 ——
             GroupBox envPane = new GroupBox();
@@ -389,15 +809,15 @@ namespace Bianwang.Launcher
 
             envPanel = new FlowLayoutPanel();
             envPanel.Location = new Point(12, 56);
-            envPanel.Size = new Size(676, 240);
+            envPanel.Size = new Size(676, 252);
             envPanel.AutoScroll = true;
-            // 默认是 LeftToRight：不改成 TopDown，六行体检会横着排成一条，只剩第一行可见
+            // 默认是 LeftToRight：不改成 TopDown，七行体检会横着排成一条，只剩第一行可见
             envPanel.FlowDirection = FlowDirection.TopDown;
             envPanel.WrapContents = false;
             envPanel.BackColor = TerraField;
             envPanel.BorderStyle = BorderStyle.None;
             envPane.Controls.Add(envPanel);
-            envPane.Height = 310;
+            envPane.Height = 322;
 
             // —— 日志 ——
             GroupBox logPane = new GroupBox();
@@ -519,18 +939,25 @@ namespace Bianwang.Launcher
 
             Version node = ProbeNode();
             bool nodeOk = node != null && (node.Major > 20 || (node.Major == 20 && (node.Minor > 19 || node.Minor == 19)));
+            // 离线安装包随带 runtime\BianwangRuntime.exe，这台机器上并没有、也不需要
+            // 系统级 Node.js。这一行必须说清用的是哪一个运行时，否则"没装 Node"的提示
+            // 会把操作员送去装一个装完也不会被用到的东西。
             EnvRow nodeRow = new EnvRow
             {
-                Name = "Node.js",
-                Detail = node == null ? "没装（站点后端要 >= 20.19.0）"
-                    : node.ToString() + (nodeOk ? "，满足 >= 20.19.0" : "，低于要求的 20.19.0"),
+                Name = paths.NodeBundled ? "Node 运行时（随包）" : "Node.js",
+                Detail = node == null
+                    ? (paths.NodeBundled
+                        ? "随包运行时存在，但 -v 没回话：检查 runtime\\BianwangRuntime.exe 是否完整"
+                        : "没装（站点后端要 >= 20.19.0）。离线安装包自带运行时，不必单独装 Node.js")
+                    : (paths.NodeBundled ? "包内 Electron 内建 " : "") + node.ToString()
+                        + (nodeOk ? "，满足 >= 20.19.0" : "，低于要求的 20.19.0"),
                 State = node == null ? 2 : (nodeOk ? 0 : 1),
                 Required = true,
                 ActionLabel = node == null ? "" : "版本明细",
                 HelpUrl = "https://nodejs.org/zh-cn/download"
             };
             if (node != null)
-                nodeRow.Action = delegate { Log("[Node] " + RunCapture("node.exe", "-v")); };
+                nodeRow.Action = delegate { Log("[Node] " + NodeCapture("-v")); };
             BuildEnvRow(nodeRow);
 
             string pnpmVer = ProbePnpm();
@@ -591,24 +1018,71 @@ namespace Bianwang.Launcher
                 dataRow.Action = delegate { RunStep("reseed", "seed", null); };
             BuildEnvRow(dataRow);
 
+            // 协议这一行要说的是"这一档到底成没成立"，不是把标签复读一遍：
+            // HTTPS + 本机后端但证书不在，就是一个货真价实的缺失项。
+            bool https = SchemeIsHttps;
+            bool atBackend = TlsAtBackend;
+            string pfxPath = TlsPfxPath;
+            bool pfxThere = File.Exists(pfxPath);
+            string certInfo = pfxThere ? CertBrief(pfxPath) : string.Empty;
+            int tlsState = 0;
+            string tlsDetail;
+            if (!https)
+                tlsDetail = "当前按明文 HTTP 起站（默认档）：内网可用，别朝公网开放这个端口";
+            else if (atBackend)
+            {
+                tlsState = pfxThere ? 0 : 2;
+                tlsDetail = pfxThere
+                    ? "node 以 TLS 监听 · 证书 " + Path.GetFileName(pfxPath) + "（" + certInfo + "）"
+                    : "选了 HTTPS + 本机后端，但证书包不存在：" + pfxPath;
+            }
+            else
+                tlsDetail = "TLS 交给前置 Nginx：后端仍按明文 HTTP 只监听回环，443 与证书要自己在 Nginx 配";
+            EnvRow tlsRow = new EnvRow
+            {
+                Name = "协议",
+                Detail = tlsDetail,
+                State = tlsState,
+                // 故意不标 Required：缺证书时"起不来"的话由 StartBackend 那三条明示来说，
+                // 比通用的一句"必需项没通过"更准（那行也自带「出自签证书」按钮，不用去点指引）。
+                Required = false,
+                ActionLabel = https && atBackend && !pfxThere ? "出自签证书" : (pfxThere ? "证书明细" : "")
+            };
+            if (https && atBackend && !pfxThere) tlsRow.Action = delegate { MakeSelfSignedCert(); };
+            else if (pfxThere)
+                tlsRow.Action = delegate { Log("[TLS] " + pfxPath + " · " + certInfo); };
+            BuildEnvRow(tlsRow);
+
             Log("[体检] Node=" + (node == null ? "缺失" : node.ToString())
                 + " · pnpm=" + (pnpmVer == null ? "缺失" : pnpmVer)
                 + " · 依赖=" + (depsOk ? "有" : "无")
                 + " · dist=" + (distOk ? "有" : "无")
-                + " · 数据=" + (dataOk ? "有" : "无"));
+                + " · 数据=" + (dataOk ? "有" : "无")
+                + " · 协议=" + (https ? (atBackend ? "https（本机证书）" : "https（前置 Nginx）") : "http"));
             SyncButtonStates();
             envPanel.ResumeLayout();
         }
 
-        static Version ProbeNode()
+        // 起 Node 子进程的唯一入口。离线包用随带运行时（改名后的 Electron，配
+        // ELECTRON_RUN_AS_NODE=1 就是 node），仓库与压缩包仍旧用 PATH 上的 node.exe。
+        // 之所以只留一个入口：以前四处各自写死 "node.exe"，换成离线包就会同时瞎掉。
+        ProcessStartInfo NodeStartInfo(string args)
+        {
+            string exe = paths == null ? "node.exe" : paths.NodeExe;
+            ProcessStartInfo psi = new ProcessStartInfo(exe, args);
+            psi.UseShellExecute = false;
+            psi.RedirectStandardOutput = true;
+            psi.RedirectStandardError = true;
+            psi.CreateNoWindow = true;
+            if (paths != null && paths.NodeBundled) psi.EnvironmentVariables["ELECTRON_RUN_AS_NODE"] = "1";
+            return psi;
+        }
+
+        Version ProbeNode()
         {
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo("node.exe", "-v");
-                psi.UseShellExecute = false;
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
-                psi.CreateNoWindow = true;
+                ProcessStartInfo psi = NodeStartInfo("-v");
                 using (Process p = Process.Start(psi))
                 {
                     string o = p.StandardOutput.ReadToEnd();
@@ -698,12 +1172,8 @@ namespace Bianwang.Launcher
                 string stdout;
                 try
                 {
-                    ProcessStartInfo psi = new ProcessStartInfo("node.exe", "\"" + scriptPath + "\"");
+                    ProcessStartInfo psi = NodeStartInfo("\"" + scriptPath + "\"");
                     psi.WorkingDirectory = paths.ServerDir;
-                    psi.UseShellExecute = false;
-                    psi.RedirectStandardOutput = true;
-                    psi.RedirectStandardError = true;
-                    psi.CreateNoWindow = true;
                     using (Process p = Process.Start(psi))
                     {
                         stdout = p.StandardOutput.ReadToEnd();
@@ -748,14 +1218,17 @@ namespace Bianwang.Launcher
             }
         }
 
-        static string RunCapture(string exe, string arg)
+        // 只有取 Node 版本这一件事走这里，所以运行时解析复用 NodeStartInfo：
+        // 随带运行时不导出 ELECTRON_RUN_AS_NODE 的话，它不会报版本，而是把安装器
+        // 界面再开一个窗口出来。
+        string NodeCapture(string arg)
         {
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo(exe, arg);
-                psi.UseShellExecute = false;
-                psi.RedirectStandardOutput = true;
-                psi.CreateNoWindow = true;
+                ProcessStartInfo psi = NodeStartInfo(arg);
+                // NodeStartInfo 为重定向准备，这里只读 stdout：留着 stderr 没人读，
+                // 子进程一写满管道就再也不退出，5 秒后只会得到一句"取版本失败"。
+                psi.RedirectStandardError = false;
                 using (Process p = Process.Start(psi))
                 {
                     string o = p.StandardOutput.ReadToEnd();
@@ -829,24 +1302,37 @@ namespace Bianwang.Launcher
                 // 起了也是白起：node 会立刻 EADDRINUSE 退出，看起来像"仪表盘坏了"。
                 // 多半是上一次选了"留着继续跑"，或同机还有第二个实例。
                 Log(string.Format(
-                    "[✗] 端口 {0} 已经被占用，没有再起一个。若是刚才选了「留着继续跑」，那站点还活着——直接用浏览器开 http://{1}:{0} 就是它；"
-                    + "要换端口就填一个别的，或先「停止」再起。", port, host));
+                    "[✗] 端口 {0} 已经被占用，没有再起一个。若是刚才选了「留着继续跑」，那站点还活着——直接用浏览器开 {1} 就是它；"
+                    + "要换端口就填一个别的，或先「停止」再起。", port, SiteUrl(port, host)));
+                return;
+            }
+            if (SchemeIsHttps && TlsAtBackend && !File.Exists(TlsPfxPath))
+            {
+                // 这条必须拦：放过去就是"操作员以为加密了、其实站点起成了明文"。
+                Log("[✗] 选了 HTTPS + 本机后端持证书，但证书包不在：" + TlsPfxPath);
+                Log("    三条出路：点「生成本机自签证书」；把已有 pfx 的路径填进证书框；或改选「前置 Nginx」/退回 HTTP。");
+                Log("    这里不会悄悄按明文起站——那样看起来成功了，实际链路没加密。");
                 return;
             }
 
             try
             {
-                ProcessStartInfo psi = new ProcessStartInfo();
-                psi.FileName = "node.exe";
-                psi.Arguments = "src/index.js";
+                ProcessStartInfo psi = NodeStartInfo("src/index.js");
                 psi.WorkingDirectory = paths.ServerDir;
-                psi.UseShellExecute = false;
-                psi.RedirectStandardOutput = true;
-                psi.RedirectStandardError = true;
+                // node 重定向到管道时按 UTF-8 写；.NET 默认用本机 OEM 码页（简体中文＝936）去解，
+                // 于是"辨妄阁 API 已启动"这类中文行在日志框里全变成繁体乱码。显式声明 UTF-8 才对。
+                psi.StandardOutputEncoding = new System.Text.UTF8Encoding(false);
+                psi.StandardErrorEncoding = new System.Text.UTF8Encoding(false);
                 psi.CreateNoWindow = true;
                 psi.EnvironmentVariables["BW_PORT"] = port.ToString();
                 psi.EnvironmentVariables["BW_HOST"] = host;
                 psi.EnvironmentVariables["BW_CRED_FILE"] = "1";
+                if (SchemeIsHttps && TlsAtBackend)
+                {
+                    psi.EnvironmentVariables["BW_TLS_PFX"] = TlsPfxPath;
+                    string pass = CfgValue("tls_pfx_pass", "");
+                    if (pass.Length > 0) psi.EnvironmentVariables["BW_TLS_PFX_PASS"] = pass;
+                }
                 if (string.IsNullOrEmpty(psi.EnvironmentVariables["NODE_ENV"]))
                     psi.EnvironmentVariables["NODE_ENV"] = "production";
 
@@ -859,9 +1345,24 @@ namespace Bianwang.Launcher
 
                 WriteRememberedPort(port);
                 lastPort = port;
-                stateLabel.Text = "运行中 · http://" + host + ":" + port + " · PID " + backend.Id;
+                string url = SiteUrl(port, host);
+                stateLabel.Text = "运行中 · " + url.TrimEnd('/') + " · PID " + backend.Id;
                 stateLabel.ForeColor = SignalInk;
-                Log(string.Format("[✓] 已起：http://{0}:{1}   （默认登录 admin/admin，上线第一件事是改密）", host, port));
+                Log(string.Format("[✓] 已起：{0}   （默认登录 admin/admin，上线第一件事是改密）", url));
+                if (SchemeIsHttps && !TlsAtBackend)
+                {
+                    Log("[i] 本次协议：HTTPS 由**前置 Nginx** 终结——node 仍按明文 HTTP 监听 "
+                        + host + ":" + port + "（这是对的，只监听回环），加密与 443 由 Nginx 负责，配置见 nginx\\bianwang.conf。");
+                    Log("[i] 本程序不校验 Nginx 是否已经装好、证书是否有效；地址打不开先查那两头。");
+                }
+                else if (SchemeIsHttps)
+                {
+                    Log("[i] 本次协议：node 直接以 TLS 监听（证书 " + TlsPfxPath + "）。自签证书浏览器会先告警，属预期。");
+                }
+                else
+                {
+                    Log("[i] 本次协议：明文 HTTP（默认档）。口令与正文在链路上是可读的，别把这个端口朝公网开放。");
+                }
                 SyncButtonStates();
             }
             catch (Exception ex)
@@ -931,7 +1432,7 @@ namespace Bianwang.Launcher
             int port;
             string host;
             if (!PortReady(out port, out host)) return;
-            OpenUrl("http://" + host + ":" + port + "/");
+            OpenUrl(SiteUrl(port, host));
         }
 
         static void OpenUrl(string url)
@@ -960,22 +1461,25 @@ namespace Bianwang.Launcher
                 bool ok = false;
                 try
                 {
-                    ProcessStartInfo psi = new ProcessStartInfo();
-                    psi.UseShellExecute = false;
-                    psi.RedirectStandardOutput = true;
-                    psi.RedirectStandardError = true;
-                    psi.CreateNoWindow = true;
-                    psi.WorkingDirectory = paths.Root;
+                    ProcessStartInfo psi;
                     if (kind == "seed")
                     {
-                        psi.FileName = "node.exe";
-                        psi.Arguments = "server/scripts/reseed.js";
-                        psi.WorkingDirectory = paths.Root;
+                        // 相对 ServerDir 而非 Root：仓库里是 server\scripts\reseed.js，
+                        // 部署包与离线包里是 api\scripts\reseed.js，同一段代码要两种布局都成立。
+                        // 离线包那台机器上通常没有 node.exe，所以走统一入口。
+                        psi = NodeStartInfo("scripts/reseed.js");
+                        psi.WorkingDirectory = paths.ServerDir;
                     }
                     else
                     {
+                        psi = new ProcessStartInfo();
                         psi.FileName = "cmd.exe";
                         psi.Arguments = "/c pnpm " + kind;
+                        psi.UseShellExecute = false;
+                        psi.RedirectStandardOutput = true;
+                        psi.RedirectStandardError = true;
+                        psi.CreateNoWindow = true;
+                        psi.WorkingDirectory = paths.Root;
                     }
                     using (Process p = Process.Start(psi))
                     {
@@ -1085,6 +1589,13 @@ namespace Bianwang.Launcher
             recheckButton.Enabled = !running;
             portBox.Enabled = !running;
             hostBox.Enabled = !running;
+            // 协议不能中途换：换了界面显示 https 而进程还在明文听，比不给开关更糟。锁住并写明要重启。
+            httpRadio.Enabled = !running;
+            httpsRadio.Enabled = !running;
+            if (tlsNodeRadio != null) tlsNodeRadio.Enabled = !running;
+            if (tlsProxyRadio != null) tlsProxyRadio.Enabled = !running;
+            if (pfxBox != null) pfxBox.Enabled = !running;
+            if (certButton != null) certButton.Enabled = !running;
             startButton.Text = running ? "运行中" : "启动站点";
         }
 

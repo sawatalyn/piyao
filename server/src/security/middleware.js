@@ -13,7 +13,14 @@ export function securityHeaders(req, res, next) {
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=()');
   res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
   res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
-  if (config.isProd) {
+  // HSTS 与 upgrade-insecure-requests 只跟着**这一条请求实际走的协议**（`trust proxy` 已开，
+  // Nginx 侧 `proxy_set_header X-Forwarded-Proto $scheme`）——判据与会话 cookie 的 Secure 同一个，也和
+  // `nginx/bianwang-http.conf` 的"HTTP 版故意不发 HSTS"对齐。
+  // 不能按 NODE_ENV 判：生产实况就是"暂无证书、内网明文 HTTP"，而 UIR 会让浏览器把每个 http:// 请求
+  // 改写成 https://，直连后端时起站机不必有 TLS 监听，整站白屏（2026-10-01 用 192.168.10.11 实跑取证）。
+  // 127.0.0.1 与 localhost 属"可信来源"、浏览器不升级，所以本机走查永远看不见这个坏法。
+  const overTls = req.secure;
+  if (config.isProd && overTls) {
     res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   }
   if (req.path.startsWith('/api/')) {
@@ -22,22 +29,20 @@ export function securityHeaders(req, res, next) {
   }
   // 生产环境下发严格 CSP：正文批注只用预置 class，因此无需 unsafe-inline
   if (config.isProd) {
-    res.setHeader(
-      'Content-Security-Policy',
-      [
-        "default-src 'self'",
-        "script-src 'self'",
-        "style-src 'self'",
-        "img-src 'self'",
-        "font-src 'self'",
-        "connect-src 'self'",
-        "form-action 'self'",
-        "base-uri 'self'",
-        "object-src 'none'",
-        "frame-ancestors 'none'",
-        'upgrade-insecure-requests',
-      ].join('; ')
-    );
+    const csp = [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self'",
+      "img-src 'self'",
+      "font-src 'self'",
+      "connect-src 'self'",
+      "form-action 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+    ];
+    if (overTls) csp.push('upgrade-insecure-requests');
+    res.setHeader('Content-Security-Policy', csp.join('; '));
   }
   next();
 }
@@ -110,7 +115,13 @@ export function requireCsrf(req, res, next) {
   return next();
 }
 
-export function sessionCookie(res, id, maxAgeSeconds) {
+/**
+ * Secure 只看**这一条请求是不是走 TLS 进来的**（`req.secure`，`trust proxy` 已开所以认 X-Forwarded-Proto）。
+ * 不能按 `NODE_ENV=production` 判：本项目当前的生产实况就是"暂无证书、只能 HTTP"，
+ * 那样发出去的会话 cookie 会被浏览器直接拒收（http://内网IP 不是可信来源），症状是"密码对却登录不上"。
+ * 反过来 TLS 一开（后端自签或 Nginx 终结）就自动带上 Secure，不需要额外开关。
+ */
+export function sessionCookie(res, id, maxAgeSeconds, secure = false) {
   res.setHeader(
     'Set-Cookie',
     [
@@ -118,7 +129,7 @@ export function sessionCookie(res, id, maxAgeSeconds) {
       'Path=/',
       'HttpOnly',
       'SameSite=Strict',
-      config.isProd ? 'Secure' : '',
+      secure ? 'Secure' : '',
       `Max-Age=${maxAgeSeconds}`,
     ]
       .filter(Boolean)
@@ -126,6 +137,6 @@ export function sessionCookie(res, id, maxAgeSeconds) {
   );
 }
 
-export function clearSessionCookie(res) {
-  sessionCookie(res, '', 0);
+export function clearSessionCookie(res, secure = false) {
+  sessionCookie(res, '', 0, secure);
 }

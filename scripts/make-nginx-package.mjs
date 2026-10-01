@@ -23,6 +23,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+/**
+ * 这一版产物是**站点树**（`bianwang-<版本>-nginx`）：Linux / Nginx 路线直接用它，
+ * Windows 路线把它当**输入**——`make-offline-package.mjs` 在它上面铺随带运行时再打成单个 exe。
+ * 包内零 `.exe`（仪表盘由目标机现编），所以这棵树本身在 Windows 上要能起站就得 PATH 上有 Node ≥ 20.19.0；
+ * "什么都不用装"的那一档在离线包里，不在这里（见 DEPLOY.md §一）。
+ */
 const NAME = `bianwang-${VERSION}-nginx`;
 const STAGE = path.join(ROOT, 'outputs', 'package', NAME);
 const ZIP = path.join(ROOT, 'outputs', 'package', `${NAME}.zip`);
@@ -32,7 +38,7 @@ const ZIP_IT = process.argv.includes('--zip');
 
 /** 绝不进包的东西：密钥、活会话、审计日志、锁定计数，以及本机跑出来的验收报告（含来源 IP 与路径） */
 const FORBIDDEN = new Set(['.secret', 'sessions.json', 'security.log', 'login-attempts.json', '口令.txt', '.bianwang-deps-probe.mjs', 'port.txt', 'run-site.log']);
-const FORBIDDEN_PATTERNS = [/^verify-report-.*\.md$/];
+const FORBIDDEN_PATTERNS = [/^verify-report-.*\.md$/, /\.exe$/i];
 const norm = (p) => path.basename(p).replace(/^security\.log.*/, 'security.log');
 /**
  * pnpm deploy 会在 `.pnpm/node_modules/` 里留一条指回**工作区包本身**的链接（`…/server`）。
@@ -361,6 +367,33 @@ if (batchProblems.length) {
 }
 console.log('批处理校验：包内所有 .cmd/.bat 均为 CRLF 且纯 ASCII');
 
+/**
+ * ============ 包内可执行文件：站点树一条都不许有 ============
+ * 仪表盘在目标机现编（`Dashboard.cs` + `build.cmd`）。
+ * 冻结一份来历不明的 exe 出去，就等于把改动之前的快照当成制品分发（A-6/A-11 同一类错误）。
+ * 离线包形态另有一套白名单（`make-offline-package.mjs`：只允许 `runtime\` 那一套 Electron），
+ * 但那道闸管的是**它自己那一层**，站点这半永远必须是零 exe。
+ */
+const foundExe = [];
+const scanExe = (dir) => {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name !== 'node_modules') scanExe(full);
+      continue;
+    }
+    if (/\.exe$/i.test(e.name)) foundExe.push(path.relative(STAGE, full).replace(/\\/g, '/'));
+  }
+};
+scanExe(STAGE);
+if (foundExe.length) {
+  console.error(`✗ 包内出现 ${foundExe.length} 个 .exe，包不做（站点树这半一律零 exe）：`);
+  for (const p of foundExe) console.error(`    ${p}`);
+  console.error('  注：随包运行时属于离线包那一层（make-offline-package.mjs），不在这棵站点树里。');
+  process.exit(1);
+}
+console.log('二进制校验：包内零 .exe（仪表盘由 build.cmd 现编；随带运行时在离线包那一层加）');
+
 /* 守卫与许可再生：包里的依赖必须与本机验证过的完全一致 */
 const guard = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'pin-guard.mjs')], { cwd: ROOT, encoding: 'utf8' });
 console.log(`依赖守卫：${(guard.stdout || guard.stderr).trim().split('\n')[0]}`);
@@ -416,6 +449,11 @@ fs.writeFileSync(
 | \`ops/\` | 环境变量样例、systemd / 任务计划样例、起停与**验收脚本** |
 | \`docs/\` | README / DEPLOY / DEVELOPMENT / THIRD_PARTY_NOTICES |
 
+> **Windows 一键安装**：这棵树**不含随带运行时**，所以在 Windows 上起站需要机器上有 Node ≥ 20.19.0：
+> 要么用离线包（\`bianwang-<版本>-offline-win.exe\`，自带运行时、装机机什么都不用装），
+> 要么在这里跑 \`installer\\setup.cmd /cli\`（走 PATH 上的 \`node\`，低于 20.19.0 会拒绝起站而不是硬跑）。
+> \`installer\\setup.cmd\` 不带 \`/cli\` 时要开图形界面需要 \`runtime\\BianwangRuntime.exe\`（只有离线包里有）。
+
 ## 1. 起后端
 
 \`\`\`bash
@@ -468,6 +506,7 @@ node ops/verify-deploy.mjs http://127.0.0.1:8787 --mutate --user admin --pass '�
 /* ---------- 清单与校验值 ---------- */
 
 const allFiles = walk(STAGE);
+allFiles.sort();
 const lines = [];
 let nodeModulesBytes = 0;
 let nodeModulesCount = 0;
@@ -483,7 +522,9 @@ for (const rel of allFiles) {
   }
   lines.push(`${sha256(full)}  ${rel}`);
 }
-lines.push(`${nmHash.digest('hex')}  api/node_modules〔聚合：${nodeModulesCount} 个文件 / ${(nodeModulesBytes / 1048576).toFixed(1)} MB，逐个内容参与〕`);
+// 聚合行写成注释：它不是一个"文件"，若按 `hash  路径` 的格式出现，`sha256sum -c` 会把整包
+// 判成失败（"api/node_modules〔聚合…〕: FAILED open or read"），交付时那条红字比缺这一行更坑。
+lines.push(`# api/node_modules 聚合摘要：${nmHash.digest('hex')}（${nodeModulesCount} 个文件 / ${(nodeModulesBytes / 1048576).toFixed(1)} MB，逐文件内容按"相对路径\\0sha256\\n"参与哈希；比对法见 MANIFEST.md）`);
 fs.writeFileSync(path.join(STAGE, 'SHA256SUMS.txt'), `${lines.join('\n')}\n`, 'utf8');
 
 const topRows = plan.map((item) => {
@@ -522,8 +563,9 @@ ${topRows.join('\n')}
 
 \`\`\`bash
 # 顶层零散件与 web/dist/、docs/、ops/、nginx/、api 源码逐个 sha256；
-# api/node_modules 用一行聚合值（内容参与哈希，列在 SHA256SUMS.txt 末行）
-sha256sum -c SHA256SUMS.txt          # Linux（聚合行请手工比对）
+# api/node_modules（2300+ 个文件）不逐条列，改为末行一条注释里的聚合摘要：
+#   把每个文件的"相对路径\\0<该文件的 sha256>\\n"按相对路径排序串起来再取一次 sha256
+sha256sum -c SHA256SUMS.txt          # 应当全部 OK、退出码 0（注释行会被自动跳过）
 Get-FileHash -Algorithm SHA256 …     # Windows
 \`\`\`
 `,
@@ -549,17 +591,30 @@ console.log(`工作区状态复位：exit ${restore.status} / ${(restore.stdout 
 /* ---------- 压缩 ---------- */
 if (ZIP_IT) {
   fs.rmSync(ZIP, { force: true });
+  // 不用 Compress-Archive：PowerShell 5.1 写出的条目名带 `\`，Linux 的 unzip 会把每条
+  // 当成一个"文件名里有反斜杠"的平面文件解出来，目录树直接没了（A-25）。
   const zip = spawnSync(
     'powershell.exe',
-    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
-      `Compress-Archive -LiteralPath '${STAGE.replaceAll("'", "''")}' -DestinationPath '${ZIP.replaceAll("'", "''")}' -Force`],
+    ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+      path.join(ROOT, 'scripts', 'make-zip.ps1'),
+      '-SourceDir', STAGE, '-DestinationZip', ZIP],
     { encoding: 'utf8' }
   );
+  const zipOut = `${zip.stdout || ''}${zip.stderr || ''}`.trim().split('\n').slice(-4).join(' / ');
   if (zip.status !== 0) {
-    console.error(zip.stderr);
+    console.error(zipOut);
+    console.error('  压缩这一步失败就不出包：一个解不开的 zip 比没有 zip 更坑。');
+    process.exit(1);
+  }
+  const bad = (zipOut.match(/BACKSLASH_ENTRIES=(\d+)/) || [])[1];
+  const nonAscii = (zipOut.match(/NON_ASCII_ENTRIES=(\d+)/) || [])[1];
+  if (bad !== '0' || nonAscii !== '0') {
+    console.error(`zip 条目名不合格（反斜杠 ${bad} 条 / 非 ASCII ${nonAscii} 条）：这种包在非 Windows 上解不出正确的目录树，拒绝交付。`);
+    console.error('  非 ASCII 的解决办法是把**文件名**改成 ASCII（界面显示的是 title，不受影响）；见 A-26。');
+    console.error(zipOut);
     process.exit(1);
   }
   const bytes = fs.statSync(ZIP).size;
   console.log(`已压缩 ${ZIP}`);
-  console.log(`  ${(bytes / 1048576).toFixed(1)} MB · sha256 ${sha256(ZIP)}`);
+  console.log(`  ${(bytes / 1048576).toFixed(1)} MB · sha256 ${sha256(ZIP)} · ${zipOut.match(/DIRS=\d+ FILES=\d+/)?.[0] ?? ''} · 条目名全部 ASCII 且用 /`);
 }

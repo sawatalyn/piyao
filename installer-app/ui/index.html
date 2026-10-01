@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-terra-faction="yan-archival" data-terra-depth="moderate">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'">
+<title>辨妄阁 · 一键安装</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="frame">
+
+  <header class="masthead">
+    <div class="spine" aria-hidden="true"><span class="spine-mark">辨<br>妄<br>阁</span></div>
+    <div class="mast-body">
+      <p class="eyebrow">离线安装包 · Windows</p>
+      <h1 class="title">一键安装<span class="title-sep">／</span><span class="title-sub" id="verdictTitle">待自检</span></h1>
+      <p class="mast-note" id="pkgNote">包根读取中…</p>
+    </div>
+    <div class="mast-instr">
+      <dl class="instrument">
+        <dt>运行时</dt><dd id="rtNote">—</dd>
+        <dt>访问协议</dt><dd id="schemeNote">—</dd>
+        <dt>提权</dt><dd id="adminNote">—</dd>
+      </dl>
+    </div>
+  </header>
+
+  <nav class="stage-rail" aria-label="安装四段">
+    <ol id="rail">
+      <li><button type="button" class="gate is-current" data-stage="audit" aria-current="step">
+        <span class="gate-no">壹</span><span class="gate-name">自检</span><span class="gate-state" data-state-for="audit">未验</span>
+      </button></li>
+      <li><button type="button" class="gate" data-stage="install">
+        <span class="gate-no">贰</span><span class="gate-name">安装</span><span class="gate-state" data-state-for="install">未开始</span>
+      </button></li>
+      <li><button type="button" class="gate" data-stage="autostart">
+        <span class="gate-no">叁</span><span class="gate-name">自启</span><span class="gate-state" data-state-for="autostart">未选择</span>
+      </button></li>
+      <li><button type="button" class="gate" data-stage="maintain">
+        <span class="gate-no">肆</span><span class="gate-name">维护</span><span class="gate-state" data-state-for="maintain">待安装</span>
+      </button></li>
+    </ol>
+    <p class="rail-foot">四段的顺序是刻意的：自检不过就不该往下装，自启要在装好之后才有意义。</p>
+  </nav>
+
+  <main class="stage">
+
+    <!-- 壹 · 自检 -->
+    <section class="pane is-open" id="pane-audit" aria-labelledby="h-audit">
+      <h2 id="h-audit">壹 · 自检</h2>
+      <p class="pane-lede">逐项核对包内容、运行时、依赖真身、落点与协议。依赖那一栏是真跑一次 <code>import</code>，不是看目录存在。</p>
+      <div class="pane-actions">
+        <button type="button" class="btn btn-primary" id="btnAudit">开始自检</button>
+        <span class="action-hint" id="auditHint">约十秒（依赖探针会真的加载一遍 pdf.js）</span>
+      </div>
+      <ul class="checks" id="checks" aria-live="polite"></ul>
+    </section>
+
+    <!-- 贰 · 安装 -->
+    <section class="pane" id="pane-install" aria-labelledby="h-install" hidden>
+      <h2 id="h-install">贰 · 安装</h2>
+      <p class="pane-lede">就地安装：包所在目录就是站点目录。引擎只做核对、播种出厂数据、在本机现编仪表盘；已有的 <code>api\data</code> 不会被覆盖。</p>
+      <div class="field-row">
+        <label class="field">
+          <span class="field-label">安装目录</span>
+          <input type="text" id="targetInput" spellcheck="false" autocomplete="off">
+        </label>
+        <button type="button" class="btn btn-quiet" id="btnPick">选目录…</button>
+      </div>
+      <label class="check-inline">
+        <input type="checkbox" id="nodeInstall">
+        <span>顺手用 winget 装/更新系统 Node.js（离线包不需要；勾上是为了同机还要跑别的东西）</span>
+      </label>
+      <div class="pane-actions">
+        <button type="button" class="btn btn-commit" id="btnInstall" disabled>钤印 · 开始安装</button>
+        <span class="action-hint" id="installHint">自检有必需项没过时，这个按钮不会解锁</span>
+      </div>
+      <div class="busy" id="installBusy" hidden><span class="busy-bar" aria-hidden="true"></span><span>引擎正在跑，日志在下面逐行出来</span></div>
+    </section>
+
+    <!-- 叁 · 自启 -->
+    <section class="pane" id="pane-autostart" aria-labelledby="h-autostart" hidden>
+      <h2 id="h-autostart">叁 · 自启</h2>
+      <p class="pane-lede">三个选项各自对应一个真实存在的机制，没有第四种。差别只在"谁还没登录时站点是否可达"。</p>
+      <fieldset class="radios">
+        <legend>自启方式</legend>
+        <label class="radio">
+          <input type="radio" name="amode" value="none">
+          <span class="radio-name">不注册</span>
+          <span class="radio-desc">现在起一次，重启后需要到「维护」里再点起站。免管理员。</span>
+        </label>
+        <label class="radio">
+          <input type="radio" name="amode" value="logon" checked>
+          <span class="radio-name">随登录</span>
+          <span class="radio-desc">HKCU 的 Run 键指向仪表盘，由它带起站点。<strong>登录前不可达</strong>。免管理员。</span>
+        </label>
+        <label class="radio">
+          <input type="radio" name="amode" value="boot">
+          <span class="radio-name">开机即起</span>
+          <span class="radio-desc">计划任务 ONSTART，身份 SYSTEM，无人登录也可访问。需管理员；客户端 Windows 可能被策略拒（那时自动降级为随登录并明说）。</span>
+        </label>
+      </fieldset>
+      <div class="field-row">
+        <label class="field field-sm">
+          <span class="field-label">端口</span>
+          <input type="number" id="portInput" min="1" max="65535" step="1" inputmode="numeric">
+        </label>
+        <label class="check-inline">
+          <input type="checkbox" id="dashCheck" checked>
+          <span>随登录起仪表盘（选「随登录」时必须勾：不然 Run 键挂 <code>run-site.cmd</code> 会闪黑框）</span>
+        </label>
+      </div>
+      <div class="pane-actions">
+        <button type="button" class="btn btn-commit" id="btnAutostart">登记自启</button>
+        <span class="action-hint">写完会回查任务与 Run 键，不只信退出码</span>
+      </div>
+    </section>
+
+    <!-- 肆 · 维护 -->
+    <section class="pane" id="pane-maintain" aria-labelledby="h-maintain" hidden>
+      <h2 id="h-maintain">肆 · 维护</h2>
+      <p class="pane-lede">装完之后这一栏就是日常入口。协议（HTTP / HTTPS）在仪表盘里改，这里只跟随。</p>
+      <div class="maint-grid">
+        <button type="button" class="btn" id="btnLive">实访核验 <span class="btn-sub">/api/menu 是否回 200</span></button>
+        <button type="button" class="btn" id="btnOpen">打开站点 <span class="btn-sub" id="openUrl">—</span></button>
+        <button type="button" class="btn" id="btnStart">现在起一次 <span class="btn-sub">不注册任何自启</span></button>
+        <button type="button" class="btn" id="btnCreds">口令记录 <span class="btn-sub">站点根目录那份 .txt</span></button>
+        <button type="button" class="btn btn-danger" id="btnUninstall">卸载 <span class="btn-sub">先停任务、留数据目录</span></button>
+      </div>
+      <p class="cred-note" id="credNote">口令记录是明文，装在站点根目录、包外不跟随——把它当凭据对待：上线前改掉 <code>admin</code> 默认口令，并限制该文件与数据目录的读取权限。</p>
+    </section>
+
+  </main>
+
+  <section class="logwrap" aria-labelledby="h-log">
+    <div class="log-head">
+      <h2 id="h-log">引擎日志</h2>
+      <button type="button" class="btn btn-mini" id="btnClear">清空</button>
+    </div>
+    <pre class="log" id="log" role="log" aria-live="polite" tabindex="0"></pre>
+  </section>
+
+  <footer class="footline">
+    <span>安装逻辑只有 <code>installer\*.cmd</code> 那一份，本窗口只是前置。</span>
+    <span>无界面 / 远程 / Server Core：用 <code>installer\setup.cmd /cli</code>，它不依赖任何 exe。</span>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

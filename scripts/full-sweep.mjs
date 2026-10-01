@@ -1141,12 +1141,32 @@ async function sectionProd() {
   const csp = page.headers.get('content-security-policy') || '';
   check('生产模式伺服构建产物', page.status === 200 && /data-terra-faction="yan-archival"/.test(html), `${page.status} · ${html.length}B`);
   check('生产模式下发严格 CSP', csp.includes("default-src 'self'") && !/unsafe-inline/.test(csp), csp.slice(0, 48));
-  check('生产模式带 HSTS 与 nosniff', Boolean(page.headers.get('strict-transport-security')) && page.headers.get('x-content-type-options') === 'nosniff');
+  check('生产模式带 nosniff', page.headers.get('x-content-type-options') === 'nosniff');
+  // 这两个头是"只在该条请求真走 TLS 时才发"的：明文 HTTP 生产档里发出去会直接把站点打死
+  // （UIR 让浏览器把每个 http:// 子资源改写成 https://，起站机没有 TLS 监听 → 整页 ERR_SSL_PROTOCOL_ERROR）
+  check('明文 HTTP 的生产档不发 HSTS、CSP 里不带 upgrade-insecure-requests',
+    !page.headers.get('strict-transport-security') && !/upgrade-insecure-requests/.test(csp),
+    `hsts=${page.headers.get('strict-transport-security') || '(无)'} · ${csp.slice(-34)}`);
+  const pageTls = await fetch(`${base}/`, { headers: { 'user-agent': UA, 'x-forwarded-proto': 'https' } });
+  const cspTls = pageTls.headers.get('content-security-policy') || '';
+  check('同一实例经 TLS 进来时补回 HSTS 与 upgrade-insecure-requests（Nginx 终结那条路）',
+    Boolean(pageTls.headers.get('strict-transport-security')) && /upgrade-insecure-requests/.test(cspTls),
+    `${pageTls.headers.get('strict-transport-security') || '(无)'}`);
   check('响应不暴露框架签名', !page.headers.get('x-powered-by'));
 
   const r = await login();
   const cookie = (r.headers.get('set-cookie') || '');
-  check('生产模式会话 Cookie 追加 Secure', r.status === 200 && /Secure/.test(cookie), cookie.slice(0, 60));
+  // 会话 cookie 的 Secure 只认"这条请求是不是真走 TLS 进来的"，不再看 NODE_ENV。
+  // 按 NODE_ENV 判会打死一种很现实的部署：**生产 + 暂时没有证书 + 内网 HTTP**——
+  // 浏览器对 http://内网IP 这类来源一律拒收 Secure cookie，症状是"口令明明对却登不进去"。
+  check('明文 HTTP 起站时不加 Secure（无证书的生产档要能登录）', r.status === 200 && !/Secure/.test(cookie), cookie.slice(0, 72));
+  const rp = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'user-agent': UA, 'x-forwarded-proto': 'https' },
+    body: JSON.stringify({ username: 'admin', password: 'admin' }),
+  });
+  const cookieTls = String(rp.headers.get('set-cookie') || '');
+  check('请求经 TLS 进来时追加 Secure（Nginx 终结那条路）', rp.status === 200 && /Secure/.test(cookieTls), cookieTls.slice(0, 72));
   const api = await call('GET', '/api/posts');
   check('生产模式接口仍禁缓存', api.headers.get('cache-control') === 'no-store' && /noindex/.test(api.headers.get('x-robots-tag') || ''));
   // 单页兜底正则是 `^(?!/api/)`：一旦写错，所有接口会静默返回 index.html 而不是 JSON

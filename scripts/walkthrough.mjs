@@ -7,14 +7,69 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 const BASE = process.env.CDP || 'http://127.0.0.1:9223';
 const SITE = process.env.SITE || 'http://127.0.0.1:8787';
 const OUT = process.env.SHOTS || '.scratch-verify/shots';
 fs.mkdirSync(OUT, { recursive: true });
+const FIXTURE = process.env.FIXTURE || '.scratch-verify/sample-chart.png';
+
+// 浏览器上传那三项要一张真实 PNG。夹具由本脚本现场生成：手工放在 .scratch-verify/ 里的话，
+// 一次目录清理就会把断言变成"上传失败"。服务端只嗅探头 8 字节魔数，其余按 PNG 规范现算 CRC 与压缩块。
+function writePngFixture(file, width = 80, height = 48) {
+  const table = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc32 = (buf) => {
+    let c = 0xffffffff;
+    for (const b of buf) c = table[(c ^ b) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type, data) => {
+    const head = Buffer.alloc(4);
+    head.writeUInt32BE(data.length);
+    const t = Buffer.from(type, 'ascii');
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(Buffer.concat([t, data])));
+    return Buffer.concat([head, t, data, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // 位深
+  ihdr[9] = 2; // 色彩类型：RGB
+  const bars = [10, 24, 18, 36, 30];
+  const ink = [0x2b, 0x3a, 0x67];
+  const paper = [0xf6, 0xf3, 0xea];
+  const raw = Buffer.alloc(height * (1 + width * 3));
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (1 + width * 3);
+    for (let x = 0; x < width; x += 1) {
+      const i = row + 1 + x * 3;
+      const on = height - y <= bars[Math.floor(x / (width / bars.length))];
+      const [r, g, b] = on ? ink : paper;
+      raw[i] = r;
+      raw[i + 1] = g;
+      raw[i + 2] = b;
+    }
+  }
+  const png = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', ihdr),
+    chunk('IDAT', zlib.deflateSync(raw)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+  fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true });
+  fs.writeFileSync(file, png);
+  return { file: path.resolve(file), bytes: png.length };
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
+const fixture = writePngFixture(FIXTURE);
 
 // 起点确定性：每轮先把演示数据重置，避免上一轮的建档/删除污染断言基线
 if (process.env.SKIP_RESEED !== '1') {
@@ -579,7 +634,7 @@ async function main() {
   check('编辑器里有可聚焦的插图上传入口', Boolean(fileNode.nodeId), String(fileNode.nodeId));
   await cdp.send('DOM.setFileInputFiles', {
     nodeId: fileNode.nodeId,
-    files: [`${process.cwd()}/.scratch-verify/sample-chart.png`],
+    files: [fixture.file],
   });
   const withImage = await waitFor(
     'document.querySelectorAll(".ck-editor")[0].querySelectorAll(".ck-editor__editable figure img").length > 0',
@@ -589,7 +644,7 @@ async function main() {
   const uploadedMid = await evaluate(
     `document.querySelectorAll('.ck-editor')[0].querySelector('.ck-editor__editable figure img')?.dataset.mid || ''`
   );
-  check('编辑器插图上传后进入正文并带媒体号', withImage === true && Boolean(uploadedMid), `mid=${uploadedMid}`);
+  check('编辑器插图上传后进入正文并带媒体号', withImage === true && Boolean(uploadedMid), `mid=${uploadedMid} 夹具=${fixture.bytes}B`);
   await sleep(400);
 
   // 三、辟谣内容（换花青笔色后划线）

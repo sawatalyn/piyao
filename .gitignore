@@ -13,13 +13,17 @@ server/data/
 outputs/
 # 验收脚本每轮落盘的报告（含实测值与时间戳，是运行态不是源码，与打包时的排除口径一致）
 verify-report-*.md
-# 仪表盘 exe 是本地编译产物（源码在 dashboard/，install.cmd 现编），不入库
-dashboard/BianwangDashboard.exe
+# 两处 exe 都是**目标机现编**的编译产物（源码在 dashboard/Dashboard.cs；installer/Installer.cs 已退役，见 DEVELOPMENT D-19），
+# 既不入库也不入部署包（站点树那半的硬闸是"包内零 .exe"；离线包里的 exe 只有 runtime\ 那一套 Electron，由 make-offline-package.mjs 按白名单逐件核对）
+dashboard/*.exe
+installer/*.exe
 # 仪表盘依赖探针的临时脚本（跑完即删，绝不能入库/入包）
 .bianwang-deps-probe.mjs
 server/.bianwang-deps-probe.mjs
-# 一键安装包在目标机上落下的机器状态（端口登记与后端输出），不入库也不入包
+# 一键安装包在目标机上落下的机器状态：端口登记、安装落点、引擎回显报告、起站日志。不入库也不入包
 installer/port.txt
+installer/target.txt
+installer/setup-report-*.txt
 installer/run-site.log
 .qoder-credits/
 .env

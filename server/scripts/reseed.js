@@ -376,9 +376,12 @@ resourceItems.push(...resourcesByUrl.values());
 fs.writeFileSync(config.paths.resources, JSON.stringify({ version: 1, items: resourceItems }, null, 2));
 
 /* —— 洛琪希图书馆镜像：演示占位书 + 演示口令（真实馆藏由运维放入 server/data/library/） —— */
-const LIB_FILE = '辨妄阁镜像功能演示占位书.epub';
-const READ_FILE = '辨妄阁分页阅览演示册.epub';
-const PDF_FILE = '辨妄阁PDF阅览演示册.pdf';
+// 文件名一律 ASCII，标题保留中文：ZIP 条目名的编码在跨平台上不可靠（.NET 写 cp936、
+// Explorer 按 OEM 码页解、Linux unzip 按 CP437 解），一旦包里有非 ASCII 文件名，
+// 总有一端解出来是乱码，而镜像站是按文件名找实体的。界面上看得见的是 title，不受影响。
+const LIB_FILE = 'bianwang-demo-placeholder.epub';
+const READ_FILE = 'bianwang-demo-reader.epub';
+const PDF_FILE = 'bianwang-demo-pdf.pdf';
 fs.mkdirSync(config.libraryDir, { recursive: true });
 const demoBook = demoEpub({
   title: '辨妄阁镜像功能演示占位书',

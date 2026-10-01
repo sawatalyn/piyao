@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "_note": "后端启动时真正 import 的裸模块名。自检的依赖探针从这里取清单，逐项 await import() 一次——A-11 的成因就是「只看 node_modules 目录存在」：v1.0.0 的包因此带着缺失的 ip-address 发了出去。dashboard/Dashboard.cs 里有一份同名单，出包脚本（scripts/make-offline-package.mjs 的第三道闸）逐项比对两者，不一致就拒绝出包。",
+  "specs": [
+    "express",
+    "express-rate-limit",
+    "sanitize-html",
+    "minisearch",
+    "multer",
+    "cookie-parser",
+    "csv-parse/sync",
+    "csv-stringify/sync",
+    "diff",
+    "@rgrove/parse-xml",
+    "pdfjs-dist/legacy/build/pdf.mjs"
+  ]
+}

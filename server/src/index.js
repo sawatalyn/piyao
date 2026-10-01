@@ -1,5 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import http from 'node:http';
+import https from 'node:https';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
@@ -91,11 +93,55 @@ app.use((err, _req, res, _next) => {
 
 users.init();
 
-const server = app.listen(config.port, config.host, () => {
-  console.log(`辨妄阁 API 已启动： http://${config.host}:${config.port}`);
+/**
+ * 访问协议在这里定，不给任何一层留"猜"的余地：
+ * 没给证书就是明文 HTTP（默认值，也是当前生产实况）；给了 BW_TLS_* 却读不到文件则**拒绝启动并说清缺哪一样**，
+ * 绝不悄悄退回 HTTP——那样操作员会以为站点已经加密。
+ */
+function resolveTls() {
+  const { pfx, pfxPass, key, cert } = config.tls;
+  if (!pfx && !key && !cert) return { scheme: 'http', options: null, note: '' };
+  if (pfx) {
+    if (!fs.existsSync(pfx)) throw new Error(`BW_TLS_PFX 指向的证书包不存在：${pfx}`);
+    return {
+      scheme: 'https',
+      options: { pfx: fs.readFileSync(pfx), ...(pfxPass ? { passphrase: pfxPass } : {}) },
+      note: `pfx=${pfx}`,
+    };
+  }
+  if (!key || !cert) throw new Error('BW_TLS_KEY 与 BW_TLS_CERT 必须成对给出（现在只有一个）。');
+  for (const [name, file] of [['BW_TLS_KEY', key], ['BW_TLS_CERT', cert]]) {
+    if (!fs.existsSync(file)) throw new Error(`${name} 指向的文件不存在：${file}`);
+  }
+  return {
+    scheme: 'https',
+    options: { key: fs.readFileSync(key), cert: fs.readFileSync(cert) },
+    note: `key=${key} cert=${cert}`,
+  };
+}
+
+let tls;
+try {
+  tls = resolveTls();
+} catch (err) {
+  console.error(`[api] 拒绝启动（不会退回明文 HTTP）：${err.message}`);
+  process.exit(1);
+}
+
+const loopback = ['127.0.0.1', '::1', 'localhost'].includes(config.host);
+const server =
+  tls.scheme === 'https' ? https.createServer(tls.options, app) : http.createServer(app);
+
+server.listen(config.port, config.host, () => {
+  console.log(`辨妄阁 API 已启动： ${tls.scheme}://${config.host}:${config.port}`);
+  if (tls.note) console.log(`TLS 证书： ${tls.note}`);
+  if (tls.scheme === 'http' && !loopback) {
+    console.log('⚠ 当前以明文 HTTP 对外提供服务：会话口令与正文在内网链路上可被读到。没有证书时这是已知取舍，'
+      + '但请只在内网放行；拿到证书后设 BW_TLS_PFX（或 BW_TLS_KEY + BW_TLS_CERT）重启即可切到 https。');
+  }
   console.log(`数据目录： ${path.resolve(config.paths.posts, '..')}`);
   console.log(`口令存储： ${config.hashPasswords ? 'scrypt 哈希' : 'CSV 明文（按需求指定）'}`);
-  const credFile = writeCredentialsNote();
+  const credFile = writeCredentialsNote(tls.scheme);
   if (credFile) console.log(`口令速查： ${credFile}（含明文口令，勿提交/分发；BW_CRED_FILE=0 可关）`);
   if (!fs.existsSync(DIST)) console.log('提示：未检测到 web/dist，仅暴露 API。前端开发服务请用 pnpm dev:web。');
 });

@@ -27,7 +27,12 @@ if not defined BW_SECRET (
 
 echo [*] Node version:
 node --version 1>nul 2>nul || (echo [X] Node.js not installed, need ^>=20.19.0 & exit /b 1)
-echo [*] Serving http://%BW_HOST%:%BW_PORT%  data=%BW_DATA_DIR%  log=ops\api.log
+rem Protocol follows the certificate: BW_TLS_PFX (or a BW_TLS_KEY/CERT pair) makes
+rem node listen with TLS; anything else is plain HTTP, which is the default.
+set "BW_SCHEME=http"
+if defined BW_TLS_PFX set "BW_SCHEME=https"
+if defined BW_TLS_KEY set "BW_SCHEME=https"
+echo [*] Serving %BW_SCHEME%://%BW_HOST%:%BW_PORT%  data=%BW_DATA_DIR%  log=ops\api.log
 echo.
 node src\index.js >> "%~dp0api.log" 2>&1
 echo [X] backend exited with code %ERRORLEVEL%, see ops\api.log

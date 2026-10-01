@@ -22,6 +22,8 @@
     "package": "node scripts/make-nginx-package.mjs",
     "package:write": "node scripts/make-nginx-package.mjs --write",
     "package:zip": "node scripts/make-nginx-package.mjs --write --zip",
+    "package:offline": "node scripts/make-offline-package.mjs --write",
+    "package:offline:dry": "node scripts/make-offline-package.mjs",
     "verify:deploy": "node ops-extras/verify-deploy.mjs"
   },
   "engines": {

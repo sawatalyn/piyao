@@ -6,7 +6,13 @@ rem
 rem  One-click check of what the site actually needs at run time, and an opt-in
 rem  install or update through Windows' own package manager (winget):
 rem
-rem    * Node.js  >= 20.19.0   REQUIRED - the backend IS a node process
+rem    * Node.js  >= 20.19.0   required for the ZIP form - the backend IS a node
+rem                             process. The OFFLINE form is the exception: it
+rem                             ships runtime\BianwangRuntime.exe, which is
+rem                             Electron's executable in node mode, and
+rem                             runtime.cmd prefers that over anything the
+rem                             machine has. Checked here through the same
+rem                             resolver the site itself uses.
 rem    * pnpm                   only needed if you run from the *source* tree;
 rem                             the deployed package ships its dependencies
 rem                             already resolved inside api\node_modules, so a
@@ -47,19 +53,34 @@ echo.
 
 set "NODE_OK=0"
 set "NODE_VER="
+rem Resolve first, report second: this is the same call run-site.cmd and
+rem deploy.cmd make, so what the check says and what the site will use cannot
+rem diverge. An offline package carries its own runtime and therefore has no
+rem Node.js requirement at all - saying "install Node" here would be wrong.
+call "%~dp0runtime.cmd"
+set "RT_RC=!ERRORLEVEL!"
+if not "!BW_RUNTIME_KIND!"=="electron" goto node_on_path
+set "NODE_OK=1"
+set "NODE_VER=!BW_RUNTIME_VER!"
+echo [ok] runtime        : bundled ^(Electron as Node^) !NODE_VER!
+echo      ^>=%MIN_MAJOR%.%MIN_MINOR%.%MIN_PATCH% is met by the package itself, so this
+echo      machine does NOT need Node.js installed to run the site.
+goto node_done
+
+:node_on_path
 where node 1>nul 2>nul
 if errorlevel 1 (
   echo [missing] Node.js        : not on PATH
 ) else (
   for /f "delims=" %%v in ('node -v 2^>nul') do set "NODE_VER=%%v"
-  call :compare "!NODE_VER!"
-  if "!REALLY_OK!"=="1" (
+  if not "!RT_RC!"=="0" (
+    echo [too old] Node.js   : !NODE_VER!  -- needs %MIN_MAJOR%.%MIN_MINOR%.%MIN_PATCH% or newer
+  ) else (
     set "NODE_OK=1"
     echo [ok] Node.js        : !NODE_VER!
-  ) else (
-    echo [too old] Node.js   : !NODE_VER!  -- needs %MIN_MAJOR%.%MIN_MINOR%.%MIN_PATCH% or newer
   )
 )
+:node_done
 
 rem pnpm is only a source-tree concern; report it but never block on it.
 set "PNPM_OK=0"
@@ -149,27 +170,4 @@ for /f "delims=" %%v in ('"%NODE_BIN%" -v 2^>nul') do set "NODE_VER=%%v"
 echo [ok] Node.js installed via winget: !NODE_VER!
 echo.
 echo Done. Re-run setup.cmd - it will continue from here.
-exit /b 0
-
-
-rem ----------------------------------------------------------------------------
-rem  compare: is the version in %1 at least MIN_MAJOR.MIN_MINOR.MIN_PATCH?
-rem  sets REALLY_OK to 1 / 0. "v24.14.1" style strings are what node prints.
-rem ----------------------------------------------------------------------------
-:compare
-set "REALLY_OK=0"
-set "V=%~1"
-if "%V%"=="" exit /b 0
-for /f "delims=v. tokens=1,2,3" %%a in ("%V%") do (
-  set "MAJ=%%a"
-  set "MIN=%%b"
-  set "PAT=%%c"
-)
-if not defined MAJ exit /b 0
-if not defined MIN set "MIN=0"
-if not defined PAT set "PAT=0"
-for /f "delims=-+ " %%x in ("!PAT!") do set "PAT=%%x"
-if !MAJ! GTR %MIN_MAJOR% set "REALLY_OK=1"
-if !MAJ! EQU %MIN_MAJOR% if !MIN! GTR %MIN_MINOR% set "REALLY_OK=1"
-if !MAJ! EQU %MIN_MAJOR% if !MIN! EQU %MIN_MINOR% if !PAT! GEQ %MIN_PATCH% set "REALLY_OK=1"
 exit /b 0

@@ -413,16 +413,17 @@ node ops/verify-deploy.mjs https://你的域名 --expect-prod --mutate --user ad
 
 ### 9.5 环境体检那一栏（缺什么说什么）
 
-面板里六行，逐行给结论与动作：
+面板里七行，逐行给结论与动作：
 
 | 行 | 判据 | 缺了会怎样 |
 | --- | --- | --- |
 | 站点目录 | 向上找到 `server/src/index.js`（源码）或 `api/src/index.js`（部署包） | 找不到就直接判定失败并说明该把 exe 放哪 |
 | Node.js | `node -v` 且 **>= 20.19.0**（与 `package.json` 的 `engines` 一致） | 必需项，不过就不让起站 |
 | pnpm | `pnpm -v` | 源码模式下是装依赖/构建要用；部署包模式已自带依赖，不算缺 |
-| 依赖 | `node_modules` 是否存在 | 给一个「装依赖」按钮，代跑 `pnpm install` |
+| 依赖 | **真跑一次启动期 `import`**（不是看 `node_modules` 目录在不在，见 §9.8） | 必需项。标红时列出具体哪几个包解析不了，并禁用「启动站点」 |
 | 前端产物 | `web/dist/index.html` | 给「构建前端」按钮，代跑 `pnpm build`；没有它只有接口、页面是空的 |
 | 数据 | `server/data/posts.json` | 给「灌演示数据」按钮，代跑 `reseed` |
+| **协议** | 按 §9.9 那一档给结论：明文 HTTP（提示）· 本机证书就位（正常，带到期日）· 前置 Nginx（提示，不校验别人那一侧）· **HTTPS 但证书不在（缺失，行内直接给「出自签证书」按钮）** | 缺证书时点「启动」会被**拒绝**，不会退回明文起站 |
 
 边界划得很明确：**只有站点自己的东西才代跑**（装依赖、构建、灌种子——都在仓库目录内、可重做）。要往机器上装**系统级软件**（Node、pnpm）时，它只给「指引」按钮打开官方下载页，不静默安装、不提权。原因很直接：本机就没有 winget，自动安装只剩"下载官方安装包并替你点确认"这一条路，而那是你的机器，不该由一个启动器替你决定。
 
@@ -479,30 +480,128 @@ imported from ...\server\node_modules\express-rate-limit\dist\index.mjs
 > 顺带一句：ESM 的裸模块名是按**发起 import 的文件位置**向上找 `node_modules` 的，跟进程 cwd 无关。
 > 所以这个探针脚本必须落在 `server/` 目录里跑，放 `%TEMP%` 会把一套完好的安装误判成"全部缺包"。
 
+### 9.9 访问协议：HTTP 还是 HTTPS（默认 HTTP）
+
+面板第一栏「运行端口与全局访问协议」下面那两个单选钮就是它。**默认 HTTP**——这不是偷懒，而是当前的现实：
+生产环境暂时拿不到 SSL 证书，明文 HTTP 上线是被支持的一条路，不是一个待修的缺陷。
+
+| 档位 | 站点实际怎么监听 | 谁能访问 | 要管理员吗 |
+| --- | --- | --- | --- |
+| **HTTP**（默认） | node 直接 `http://<监听>:<端口>` | 内网；**别把这个端口朝公网开放**（口令与会话在链路上是明文） | 不要 |
+| **HTTPS · 本机后端持证书** | node 用 `https` 监听同一个端口 | 内网/自用；自签证书浏览器会先弹告警 | 不要 |
+| **HTTPS · 前置 Nginx** | node 仍按明文只监听回环，443 与域名证书由 Nginx 负责 | 正式对外的形态 | 配 Nginx 那侧要 |
+
+三件事值得单独说清楚：
+
+- **「TLS 由谁终结」不是措辞游戏，它决定后端要不要证书。** 选「本机后端持证书」而证书文件不在时，
+  仪表盘**拒绝起站**并写明三条出路（点「生成本机自签证书」／填已有的 pfx 路径／改回 HTTP 或选 Nginx）。
+  这条拒绝是刻意的：悄悄退回明文起站，你会以为链路加密了。`run-site.cmd`（开机自启那条路）同样按这个判据拒绝，退出码 4。
+- **自签证书用系统自带的能力出**：`New-SelfSignedCertificate` 在当前用户证书库里签一张（SAN 含 `localhost`、本机名与监听地址），
+  再用 `Export-PfxCertificate` 导成 pfx 落到 `%LOCALAPPDATA%\Bianwang\tls\`。不装任何第三方工具，也不要管理员。
+  点按钮前会弹一次明示：自签＝浏览器告警、私钥只靠 NTFS 权限保护、正式站点请换域名证书或交给 Nginx。
+- **会话 Cookie 的 `Secure` 跟着真实协议走，不再跟着 `NODE_ENV`。** 后端 `production` 模式过去会硬给 cookie 加 `Secure`，
+  而"生产 + 无证书 + HTTP"恰好是现在这台机器的组合——浏览器对 `http://内网IP` 这类来源一律拒收 `Secure` cookie，
+  症状是"口令明明对却登不进去"。现在按请求是不是 TLS 进来判（`trust proxy` 已开，所以 Nginx 终结那条路也会正确带上 `Secure`）。
+
+协议记在 `%LOCALAPPDATA%\Bianwang\dashboard.cfg`（`scheme=` / `tls_from=` / `tls_pfx=`），
+和端口同处一份文件——所以**开机自启、`run-site.cmd`、安装器读到的都是同一个口径**，不会一个界面说 https 一个进程在听明文。
+站点跑起来时协议栏是**灰的**：中途改协议会让界面显示 https 而进程还在明文听，比不给开关更糟，要改先点「停止」。
+
+> 一个已知限制：证书路径里**不要有中文**。`run-site.cmd` 用 cmd 的 OEM 码页读配置，含中文的 pfx 路径它会读成乱码；
+> 仪表盘在协议提示里会明确警告这一点。手工起站（点「启动」）不受影响，因为路径是从界面直接递给 node 的。
+
 ---
 
-## 10. 一键安装包（`installer/`，Windows）
+## 10. 离线完整安装包（`installer/` + `runtime/`，Windows）
 
-部署包里除了 §9 那个"双击起站"的仪表盘，还有一整套 `installer\*.cmd`：**从一台干净的 Windows 机器到"开机就有站、能自启、能卸干净"全程不用敲命令**。它们只依赖系统自带的 `cmd`、`PowerShell`、`robocopy`、`schtasks` 和 `reg`，不装任何第三方工具。
+交付只有**一个文件**：`bianwang-<版本>-offline-win.exe`。它是自解压安装器（NSIS，zlib 压缩），双击后提权、问一个安装目录，把「站点 + 随带运行时 + 图形安装器」整棵树解到那里，再问你要不要立刻打开安装器。
 
-### 10.1 四个能力对应哪些脚本
+装完之后目录里是：`api\`（后端与平铺好的依赖）· `web\dist\`（前端产物）· `runtime\`（**随带运行时**，兼安装器宿主）· `dashboard\`（仪表盘源码，安装时在本机现编 exe）· `installer\`（六个 `.cmd` 引擎）· `nginx\` · `ops\` · `docs\`。
 
-| 能力 | 脚本 | 单独用法 | 要管理员吗 |
+**同一个 `runtime\BianwangRuntime.exe` 有两个身份**，这是这一版形态的核心：
+
+| 怎么起它 | 它是什么 | 谁在用 |
+| --- | --- | --- |
+| 带 `ELECTRON_RUN_AS_NODE=1` 起脚本 | Node 24.21.0（Electron 44.5.1 内建），行为与 `node <脚本> <参数>` 一致 | `installer\runtime.cmd` 判定后交给 `run-site.cmd`、`deploy.cmd` 的播种、仪表盘的启动与依赖探针 |
+| 直接双击 | 图形安装器：四段窗口（① 自检 → ② 安装 → ③ 自启选择 → ④ 维护） | 你，以及 NSIS 安装完那一步 |
+
+所以装机机**不需要装 Node.js，也不需要 .NET 组件**：`env.cmd` 会明说"运行时由包自己提供"，`deploy.cmd` 与 `run-site.cmd` 也不再要求 PATH 上有 `node`。要换回系统 Node 也成——把 `runtime\` 整个删掉，解析顺序就落到 PATH 上的 `node`（低于 20.19.0 会被**拒绝起站**而不是硬跑）。
+
+**拿到的那个 exe 是不是原样**（防"包被人换过"，不是防病毒）：
+
+```cmd
+certutil -hashfile bianwang-<版本>-offline-win.exe SHA256
+```
+
+对 Release 说明里那一行；装完之后包内还有 `SHA256SUMS.txt` 可逐文件比对（`sha256sum -c`，聚合行的读法见包内 `MANIFEST.md`）。
+
+`.exe` 一律不签名，首次运行可能弹 SmartScreen——那是未签名的必然结果，不是站点坏了。
+
+> **双击没反应、或者文件从目录里消失了**：这是本机实测撞到的一种杀软处置（360 主动防御会把"临时目录里来历不明的 exe"执行掉再删文件；Windows Defender 无查杀记录，见 DEVELOPMENT A-24）。
+> ① **别在 `%TEMP%`／浏览器下载的临时解压目录里直接双击**，先放到常规目录（例如 `D:\bianwang-offline-win.exe`）；
+> ② 被拦时**先按上面的摘要核对**，确认没被替换后再选"恢复并加信任"；
+> ③ 完全不想碰图形界面，就用命令行出口 `installer\setup.cmd /cli [D:\Sites\bianwang]`——它是纯批处理，**不建窗口**，
+> Server Core（没有图形子系统）也只能走这条。但别说它"不碰 exe"：起后端用的仍是随包那个 `runtime\BianwangRuntime.exe`（只是以 Node 身份跑）。
+> Core 上 Electron 能不能以 Node 身份起来**我们没实机验过**（R-19）；真不行就把 `runtime\` 整个删掉、装系统 Node ≥ 20.19.0，六个引擎会自动落到 PATH 上的 `node`。
+
+安装器不重写安装逻辑——它就是那几个 `.cmd` 引擎的前置：`runtime.cmd` / `env.cmd` / `deploy.cmd` / `autostart.cmd` / `run-site.cmd` / `uninstall.cmd` / `creds.cmd`。**逻辑只有一份**，所以你从界面点、从命令行调、或者在 SSH 里没有图形界面时跑脚本，走的是同一条代码。整套只依赖系统自带的 `cmd`、`PowerShell`、`robocopy`、`schtasks`、`reg`，不装任何第三方工具。
+
+### 10.1 一个入口 + 四个能力
+
+| 层 | 名字 | 用法 | 要管理员吗 |
 | --- | --- | --- | --- |
-| **① 监测 / 安装 / 更新运行环境** | `env.cmd` | `env.cmd`（只检测）· `env.cmd /install`（缺了就装） | 装 Node 时要看 winget 脸色，脚本本身不提权 |
-| **② 部署完整程序（后端 + 前端 + 仪表盘）** | `deploy.cmd` | `deploy.cmd`（装到 `C:\Bianwang`）· `deploy.cmd D:\Sites\bianwang` | 看目标目录是否可写 |
-| **③ 开机自启动服务** | `autostart.cmd` + `run-site.cmd` | `autostart.cmd /port 8787` · `/status` · `/remove` | **要**（`/sc onstart /ru SYSTEM` 是非管理员做不到的动作） |
-| **④ 一键卸载** | `uninstall.cmd` | `uninstall.cmd`（全删）· `/quiet`（只停不删）· `/data D:\bak`（删前先拷数据） | 删计划任务那一步要 |
-| 查口令 | `creds.cmd` | `creds.cmd` · `creds.cmd /show` | 不要 |
-| **全部串起来** | **`setup.cmd`** | `setup.cmd` · `setup.cmd D:\Sites\bianwang` · `/check` · `/skipenv` · `/port 8787` | 想注册自启就要 |
+| **入口** | **`bianwang-<版本>-offline-win.exe`**（解包并起界面）· 装完后 **`installer\setup.cmd`** 或直接双击 `runtime\BianwangRuntime.exe` | 双击即可进界面 | 解到 `Program Files` 与"开机自启"要 |
+| 界面 | `runtime\BianwangRuntime.exe` | 四段：自检 / 安装 / 自启 / 维护。**没有命令行动词**——脚本化请走下面那条批处理出口 | 同上 |
+| **⓪ 运行时判定** | `runtime.cmd` | 被别的脚本 `call`，不单独跑。它设 `BW_NODE` / `BW_RUNTIME_KIND` / `BW_RUNTIME_VER`：随包的赢，否则用 PATH 上的 `node`（低于 20.19.0 返回 3，不硬跑） | 不要 |
+| **① 运行环境** | `env.cmd` | `env.cmd`（只检测）· `env.cmd /install`（缺了就装） | 装 Node 看 winget 脸色，脚本本身不提权 |
+| **② 部署程序** | `deploy.cmd` | `deploy.cmd <目录>`（拷过去）· `deploy.cmd <目录> /inplace`（**离线包走这条**：包已经在要跑的地方，只核对 + 播种 + 现编仪表盘） | 看目标目录是否可写 |
+| **③ 自启** | `autostart.cmd` + `run-site.cmd` | `/port 8787` · `/site:boot\|none` · `/dash:on\|off` · `/status` · `/remove` | **只有 `ONSTART`+`SYSTEM` 那条要** |
+| **④ 卸载** | `uninstall.cmd` | `uninstall.cmd`（交互全删）· `/quiet`（只停不删）· `/data D:\bak`（删前先拷数据）。控制面板那条卸载是 NSIS 的卸载器：先跑 `/quiet`，再删目录 | 删计划任务那一步要 |
+| 查口令 | `creds.cmd` | `creds.cmd` · `creds.cmd /show` · `/root D:\x` | 不要 |
 
-**新机器上只需要记一个名字：`setup.cmd`。** 解压 `bianwang-1.1.0-nginx.zip`，进 `installer\`，双击 `setup.cmd`。它按 ① → ② → ③ → 实活校验 的顺序跑，**任一步失败就停下来报是哪一步**，不会把你带进"装了一半"的状态。
+机器只能 SSH 进、没有键盘，或者干脆是 Server Core：`setup.cmd /cli` 就是那条线性四步流程（环境 → 部署 → 自启 → 实活校验），`setup.cmd /check` 只跑环境检测。**任一步失败就停下来报是哪一步**，不会把你带进"装了一半"的状态。
 
 > **别搞混两个 `uninstall.cmd`**，它们删的东西差一个数量级：
 > `dashboard\uninstall.cmd`（§9）只撤仪表盘自己登记的登录启动项和快捷方式，**不碰数据、不碰站点**；
 > `installer\uninstall.cmd`（本节）是**整个部署的全删**，含 `api\data`。想收掉一个 GUI 启动器却跑错了脚本，档案就没了。
 
-### 10.2 每一步到底做了什么
+### 10.2 图形安装器的四段
+
+**① 自检**——十项，每项给"通过 / 提示 / 失败"和一句"怎么处理"。它拦得住真问题，也不会为假问题拦你：只有**前五项**（包根 · 安装引擎 · 站点内容 · 运行时 · 依赖完整性）判失败才禁用安装按钮，其余是"知道了再继续"。
+
+| 检查 | 判据（不是"看目录在不在"） |
+| --- | --- |
+| 包根 | `api\src\index.js` 在不在——它同时是"这是完整离线包"和"已经装过、这次就地维护"的判据（后者会写明"已安装，就地维护"） |
+| 安装引擎 | `runtime.cmd` / `env.cmd` / `deploy.cmd` / `autostart.cmd` / `run-site.cmd` / `uninstall.cmd` / `creds.cmd` / `creds.ps1` / `setup.cmd` **九个齐**——缺任何一个直接失败，因为界面只是这些脚本的前置，逻辑只有一份 |
+| 站点内容 | 后端 `api/src/index.js` · 前端产物 `web/dist/index.html` · Nginx 站点配置 `nginx/bianwang-http.conf` 三件逐个查 |
+| 运行时 | 随包的 `runtime\BianwangRuntime.exe`（带 `ELECTRON_RUN_AS_NODE=1` 就是内建 Node 24.21.0）优先，没有才退回 PATH 上的 `node`；**低于 20.19.0 判失败**，判据与 `package.json` 的 `engines` 同源 |
+| **依赖完整性** | **往 `api\` 里落一个探针、真 `import` 那 11 个启动期包**（清单读 `installer\startup-imports.json`），再把探针删掉。只看 `node_modules` 存在是不够的——v1.0.0 那个包就是这么带着缺失的 `ip-address` 发出去的（A-11）。装过的树在 `<目标>\api` 上跑探针，没装过在包内 `api\` 上跑。「**祖先链上不许有别的 `node_modules`**」那条判定在出包那一侧的孤立自足性闸里做（F-18），安装器这条只证明"这份 `api\` 在它现在待的位置真解析得开" |
+| 落点可写 | 真写一个临时文件 + 读回来 + 删掉；失败时分"你没提权"和"这个盘写不进去/满了"两种说法 |
+| 仪表盘 | `dashboard\build.cmd` 在 → 提示"安装时在本机现编"；缺了只是警告——站点本身跟 .NET 无关，用 `run-site.cmd` 照样起 |
+| **访问协议** | 读仪表盘的 `dashboard.cfg`（`scheme` / `tls_from` / `tls_pfx`）后给四态结论：明文 HTTP（通过，默认档）· HTTPS 由前置 Nginx（通过，本程序不校验 Nginx）· **HTTPS + 本机证书就位**（通过）· **HTTPS + 证书不在**（**失败**：`run-site.cmd` 会拒绝起站，这不是装坏了） |
+| 站点实况 | 先试端口有没有人听着，再 `GET /api/menu`——"没人听（正常）/ 200 / 有人听着但没回 200（可能不是本站那个口）"三种结论分开给 |
+| 自启现状 | 两个计划任务（`BianwangSite` / `BianwangDashboard`）与 HKCU Run 键**各自读回来**，加一句是否已提权。任务查不到时会区分"确认没有"与"没查成"（`unknown`），不把查询失败说成"未注册" |
+
+> 安装器里所有"访问地址"与实访探针都跟着上面那条协议走（`http://` 还是 `https://`），
+> 探自签证书时只对**回环地址**放行、并且显式打开 TLS 1.2——这两件事不做，探针会在站点完全健康时报"无应答"（A-19）。
+
+**② 安装**——填目标目录与端口，看流式日志。**离线包默认就是"就地安装"**（目标 ＝ 包所在目录，走 `deploy.cmd /inplace`：只核对内容、缺数据时灌一次出厂演示数据、在本机现编仪表盘，不把 400 MB 拷到别处）；填了**别的**目录才走拷贝那条路。"用 winget 代装 Node"只在没有随包运行时的树上用得到（离线包自带，通常一辈子见不着它）。**已装过再点一次就是更新**：`api\data` 与站根的口令记录都不动。
+
+**③ 自启选择**——三选一，每个都对应一个**真实可用**的机制，不发明第三种：
+
+| 选它 | 机制 | 权限 | 边界（界面上也照这个写） |
+| --- | --- | --- | --- |
+| 不注册自启 | 什么都不登记，只把站点起一次 | 不要 | 重启后要手动起 |
+| 登录后自动起 | 写 `HKCU\...\Run` → `BianwangDashboard.exe --autostart`，由它沿用记录过的端口把站点带起来 | **不要管理员** | 登录前网站不可达 |
+| 开机即起，无人登录也可访问 | 计划任务 `BianwangSite`（`ONSTART` / `SYSTEM`）执行 `run-site.cmd` | **要** | 客户端 Windows 即便提权也可能被策略拒绝；被拒时**自动降级成"登录后自动起"**并在日志里写明，绝不报"已装好" |
+
+> 实测本机（Windows 11 专业版）**非提权时连 `schtasks /create /sc onlogon` 都被拒**，所以"登录态"一律走注册表 Run 键，不建登录任务——这不是省事，是那条路在别人机器上根本不通。
+
+**④ 维护**——打开站点、实活检查 `/api/menu`、起站点（现在）、停站点（只杀占这个端口的进程，不 `taskkill /im node.exe` 乱杀）、打开口令记录、打开仪表盘；卸载分两档：**只停服务与自启（留文件）** 与 **彻底卸载（连 `api\data` 一起删）**，后者还要在弹出的小窗口里输入 `DELETE`。
+
+**为什么站点是"另起会话"而不是安装器的子进程**：实测四种 `start` 写法都会让被派生的站点**继承调用方的 stdout 管道**，于是 `Start-Process -Wait`、`cmd | findstr`、CI 步骤会被一个跑得很好的站点卡到超时。安装器改用 ShellExecute 起独立会话，再自己探端口给结论。
+
+### 10.3 每一步到底做了什么
 
 **① 环境（`env.cmd`）** —— 检测三样，判据各不相同：
 
@@ -534,15 +633,20 @@ imported from ...\server\node_modules\express-rate-limit\dist\index.mjs
 
 它会挡住"把自己拷到自己身上"：源目录和目标目录解析成同一个绝对路径时直接退出，不然 robocopy 会把每个文件都报成"跳过，同一文件"，看着像失败。
 
-**③ 自启（`autostart.cmd`）** —— 按你指定的"**后端开机即起 + 仪表盘登录即起**"，用**两个任务载体**，因为它们回答的是两个不同的问题：
+**③ 自启（`autostart.cmd`）** —— 三种形态由安装器界面的第三段选出来，脚本层用开关表达：`/site:boot`（注册 `ONSTART`+`SYSTEM` 任务）· `/site:none`（什么都不注册，只把端口记进 `port.txt`）· `/dash:on|off`（要不要顺带注册仪表盘的登录任务）。默认 `boot` + `on`，也就是 `setup.cmd /cli` 走的那条线性四步。**"登录后自动起"这一档只有界面会做**：它写的是 HKCU Run 键，不属于 `autostart.cmd` 的职责（见下面 10.4 的手写办法）。
+
+`ONSTART` 那条回答的问题是"**机器一通网就可达，不必有人登录**"——Server 上做内网服务就是这一条：
 
 | 任务名 | 触发 | 以谁的身份 | 意图 |
 | --- | --- | --- | --- |
-| `BianwangSite` | `ONSTART` | `SYSTEM`，最高权限，无窗口 | 机器一通网站点就可达，**不必有人登录**。Server 上做内网服务就是这一条 |
+| `BianwangSite` | `ONSTART` | `SYSTEM`，最高权限，无窗口 | 无人登录也可访问 |
 | `BianwangDashboard` | `ONLOGON` | 登录的那个用户 | GUI 跟着会话回来，能看状态、读日志、改端口。它**不会**再起一个后端——先探端口，已有进程在服务就退让 |
+
+而"登录后自动起"这一档**故意不走计划任务**：实测非提权连 `ONLOGON` 任务都建不出来，所以它落 `HKCU\...\Run` = `BianwangDashboard.exe --autostart`，普通用户权限就能成，代价是登录前不可达。写完安装器会**把注册表读回来核对**，不看"函数返回成功"就算数。
 
 端口是这里唯一的输入。`autostart.cmd` 把答过的端口记进 `installer\port.txt`，`run-site.cmd`（计划任务真正执行的脚本）按 **`port.txt` → 仪表盘记住的端口（`%LOCALAPPDATA%\Bianwang\dashboard.cfg`）→ 没有就拒绝启动并写日志** 的顺序取值。
 **第三步是故意的**：开机时没人来填端口，宁可不上，也不会猜一个默认值去撞别人正在用的服务——这条和 §9.4 是同一个取舍。取值之后还会先探一次端口，若已有进程在服务就记一句"无事可做"正常退出，避免每次开机多留一个孤儿进程。
+**协议也从同一份 `dashboard.cfg` 取**（`scheme` / `tls_from` / `tls_pfx`，见 §9.9）：`https` + 本机后端且证书在，就以 `BW_TLS_PFX` 起 node（真 TLS 监听）；`https` + 前置 Nginx，后端仍按明文只听回环；`https` + 证书不在，**退出码 4 并写明拒绝原因**，不会退回明文糊你一次"启动成功"。
 
 注册完它会 `schtasks /run` 立刻跑一遍**并真的去连端口**确认，这样你不用重启就能知道开机这条路通不通。`/status` 在**非提权**下也能用（读注册信息是无害动作，所以它放在提权闸门之前）。
 
@@ -552,7 +656,7 @@ imported from ...\server\node_modules\express-rate-limit\dist\index.mjs
 
 > **它为什么自己再跑一遍**：cmd.exe 是**逐行懒读**批处理文件的，而这个脚本平时就住在它要删的树里。实测过一次干净的卸载：目录确实没了，但 `rd` 之后的每一行都变成"系统找不到指定的路径"，返回码 1——把结论打成失败。所以它会先把自身拷进 `%TEMP%`（树外），由那份拷贝来删并给结论，启动器在**同一行**上退出。**你答问题、看报告的是那个新弹出的窗口**，别提前关它。
 
-### 10.3 Windows 10 与 Server 2019 的差别
+### 10.4 Windows 10 与 Server 2019 的差别
 
 两处会不一样，其余（计划任务、PowerShell 5.1、自带 `csc.exe`、robocopy）两版都有：
 
@@ -566,13 +670,17 @@ imported from ...\server\node_modules\express-rate-limit\dist\index.mjs
 **实测撞到的一条差异，别当成"装坏了"**：在客户端 Windows（本机 Windows 11 专业版）上，**即便窗口已提权**，
 `schtasks` 也可能拒绝把任务身份设成 `SYSTEM`——客户端 SKU 的"作为批处理登录 / 作为服务登录"策略会拦，
 而任务计划程序只回一句"拒绝访问"，不告诉你是哪一条。此时 `autostart.cmd` **不会整段放弃**：
-照常注册登录即起的仪表盘任务 → 直接把站点拉起来（证明程序本身能跑）→ 探端口确认 → 以 **rc 4** 退出，
-并明写"这样起来的站点重启后不会自己回来"。Server 2019（服务器 SKU）上这条 normally 通。
-如果你的机器也报拒绝访问，三条出路：① 改走"登录即起"（把 `run-site.cmd` 也挂到 ONLOGON，不需要 `SYSTEM`）；
-② 用服务包装器把后端注册成服务（**引第三方件前先核许可**，本项目只收宽松许可）；
+照常注册仪表盘的登录任务（`ONLOGON`，在这个提权窗口里建得出来）→ 直接把站点拉起来（证明程序本身能跑）→ 探端口确认 → 以 **rc 4** 退出，
+并明写"这样起来的站点重启后不会自己回来"。Server 2019（服务器 SKU）上这条 normally 通。图形安装器遇到 rc 4 时还会多做一步：把选择**降级成"登录后自动起"**，也就是替你写下面那条 Run 键。
+如果你的机器也报拒绝访问，三条出路：① 在界面第 3 段改选**"登录后自动起"**——它不碰任务计划程序，
+写的是你自己账户下的 `HKCU\...\Run`（值名 `BianwangDashboard`，数据是 `"<目标>\dashboard\BianwangDashboard.exe" --autostart`），**免管理员**；
+只有界面的第三段会写这条键，`setup.cmd /cli` 撞到 rc 4 时只起本次会话并提示你改选它。纯 SSH 的机器想自己补，就照上面那对"值名＋数据" `reg add` 一次，
+然后跑 `installer\setup.cmd /check` 或看界面"自启现状"那一项读回来的结果（写完必须读回，别信"命令没报错"）；
+注意"登录后自动起"如果走 `schtasks /sc onlogon`，在**非提权**窗口里同样会被拒（实测），
+所以这一档就是 Run 键，不是任务；② 用服务包装器把后端注册成服务（**引第三方件前先核许可**，本项目只收宽松许可）；
 ③ 请管理员检查该机的"Log on as a batch job / Log on as a service"策略。
 
-### 10.4 口令文件在哪里
+### 10.5 口令文件在哪里
 
 后端**第一次启动时**在站点根目录生成 `口令.txt`（中文命名），列出所有登录口令与镜像入馆口令，明文，含默认 `admin` / `admin`。
 

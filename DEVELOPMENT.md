@@ -18,8 +18,8 @@
 | 视觉 | terra-faction-ui 的 **Yan（炎国 archival）阵营语法 · 最高规格（maximal）**，根属性 `data-terra-faction="yan-archival"` |
 | 安全 | 严格 CSP（无 `unsafe-inline`）、CSRF 双提交、登录与验印双维度锁定、HMAC 短时效直链、反爬 UA 门槛、5MB 单图上限 |
 | 台账 | 档案逐版快照与词级比对（`diff@9` BSD-3-Clause）、媒体三方对账与点名清理、`security.log` 聚合视图 |
-| 本轮验证 | 接口 48/48 · 全量 218/218 · 浏览器走查 165/165（控制台零输出、CSP 零违规）· Yan 契约审计 52 文件无告警 · 色域审计 PASS · 出包四道硬闸（软链接 0 · 孤立自足性 started+200 · 批处理 CRLF+ASCII · 依赖守卫 PASS） |
-| Windows 交付 | 自带 csc 现编的 WinForms 仪表盘（`dashboard/`，零新增依赖）+ 一键安装包（`installer/` 七个 `.cmd` 与一个 `.ps1`：环境/部署/自启/卸载），只用系统自带工具，脚本一律 CRLF + 纯 ASCII；全流程已在 Windows 11 上实跑（含分支与拒绝路径），唯 `ONSTART`+`SYSTEM` 注册因客户端策略被拒而**未正面验证**（A-15 / R-15） |
+| 本轮验证 | 接口 **48/48** · 全量 **221/221**（比上一轮多两条：E-10 那对"HSTS/UIR 跟随真实协议"的成对断言）· 浏览器走查 **165/165**、控制台零输出（三套**串行复跑**，本轮 `server/src/security/middleware.js` 与走查脚本都动过，正是"改了后端就要复跑"的那一类）· **明文 HTTP 直连内网 IP 的浏览器实测**：修前 7 请求 / 6 条被改写成 https / 6 失败 / 接口 0 条，修后 16 请求 / 0 改写 / 0 失败 / 接口 5 条（E-10）· Yan 契约审计 52 文件无告警 · 色域审计 PASS · 依赖守卫 PASS（19 条声明 / 17 个运行时依赖）· `pnpm build` 退出 0、ERROR 行 0 · 出包**站点那半六道闸**（软链接 0 · 孤立自足性 started+200 · 批处理 CRLF+ASCII · **包内零 .exe** · zip 条目名全 `/` 且全 ASCII · 运行态扫描）＋**离线包三道**（外部二进制按 sha256 取用 · `.exe` 白名单 · 依赖清单三处同源）· Windows 侧：协议四态实跑（§4.12）＋**离线树用随包运行时真起后端后跑完 `verify-deploy`：只读 26 项 0 失败、含写 36 项 0 失败**（§4.14）· 包的可解性回环：`unzip` 解到仓库树外 → `sha256sum -c SHA256SUMS.txt` **124 条全 OK、退出码 0** → `sha256sum -c SHA256SUMS-offline.txt` **退出码 0**（这份上一轮是 CRLF，`-c` 会把 `\r` 当文件名判红，A-33）· 出完包回读 `scripts/check-package-parity.mjs`：**33 件逐字节一致、差异 0** |
+| Windows 交付 | **一个离线完整安装包** `bianwang-<版本>-offline-win.exe`（NSIS 自解压，171 MB 量级）：里面是「站点 + 随带运行时 + 图形安装器」，装机机**不用装 Node.js、不用 .NET 组件、不用联网**。运行时与安装器共用同一个 `runtime\BianwangRuntime.exe`（Electron 44.5.1 改名；带 `ELECTRON_RUN_AS_NODE` 是内建 Node 24.21.0，不带就是四段窗口：自检 / 安装 / 自启选择 / 维护）。**界面只是前置，逻辑仍是那七个 `.cmd` 引擎**（本轮新增 `runtime.cmd` 统一判定运行时），脚本一律 CRLF + 纯 ASCII。仪表盘仍是自带 csc 现编的 WinForms，并同样学会用随包运行时。另带全局访问协议选择（HTTP 默认 / HTTPS 两档终结者），协议记在 `dashboard.cfg` 由后端、`run-site.cmd`、安装器三层跟随（§4.12 / R-16）。已在本机 Windows 11 实跑（含 CDP 真点界面），`ONSTART`+`SYSTEM` 与 Win10 / Server 2019 实机仍**未验**（A-15 / R-15 / R-19） |
 | 交付纪律 | 只采纳宽松许可（MIT/Apache/BSD/ISC/CC0）代码；**唯一 copyleft 例外是 CKEditor 5，按用户明确指定引入并单独核实**；不打包任何官方标识、美术、CDN 素材；**选型一律"先找现成开源、核实许可、再决定自研"**（§三 3.4） |
 
 ---
@@ -51,7 +51,10 @@
 | R19 | （追加）**媒体 GC 可视化** + **`security.log` 可观测性** | `store/mediaInventory.js`（磁盘/索引/在档引用三方对账 + 点名清理）+ `security/logInsight.js`（聚合与信号）+ `/ops`（`OpsView.vue`） | ✅ 清理**默认预演**，`confirm` 才动手；日志不引第三方栈（理由见 §三 3.5） |
 | R20 | （追加）**预览白名单**：不是登记在册的书都能在线读 | `library.json` 的 `previewable`（登记时逐个勾选、管理面可开关）→ 未勾选者阅览 403 `preview-off` | ✅ 架上入口与管理面行状态同步 |
 | R21 | （追加）Windows **图形仪表盘**：可开机自启或 exe 启动；启动时每次都要 GUI 填端口；协助检查/安装/更新运行环境 | `dashboard/Dashboard.cs`（自带 csc 现编的 WinForms，零新增依赖）+ `build/install/uninstall.cmd` | ✅ 手动/自启/环境体检三条路径实跑（§四 4.10）；"每次填端口"与"开机自启"冲突的取舍已写成口径 |
-| R22 | （追加）**一键部署安装包**四件事：① 监测/安装/更新运行环境 ② 部署含仪表盘的完整程序（遵守启动时向根目录导出口令.txt）③ 一键卸载 ④ 一键部署开机自启 | `installer/`：`setup.cmd` 编排 + `env.cmd` / `deploy.cmd` / `autostart.cmd` + `run-site.cmd` / `creds.cmd` + `creds.ps1` / `uninstall.cmd`（§四 4.11，用法见 `USAGE.md` §10） | ⚠️ ①②③④ 全流程已在 Windows 11 上实跑（含两条分支与三条拒绝分支，见 §九 第 23 阶段）；**唯 ④ 的 `ONSTART`+`SYSTEM` 注册成功那一条未验证**——本机提权后 `schtasks` 仍被策略拒绝（A-15 / R-15） |
+| R22 | （追加）**一键部署安装包**四件事：① 监测/安装/更新运行环境 ② 部署含仪表盘的完整程序（遵守启动时向根目录导出口令.txt）③ 一键卸载 ④ 一键部署开机自启；（2026-10-01 追加形态要求）**必须是"一个完整的、带自检 / 安装 / 自启选择的 exe 程序"** | `installer/`：`setup.cmd` 引导（现编 → `--ping` 确认可执行 → 开界面）+ `Installer.cs`/`build.cmd` 图形安装器（四段）+ `env.cmd` / `deploy.cmd` / `autostart.cmd` + `run-site.cmd` / `creds.cmd` + `creds.ps1` / `uninstall.cmd`（§四 4.11，用法见 `USAGE.md` §10） | ⚠️ ①②③ 全流程已在 Windows 11 上实跑（含两条分支与三条拒绝分支，见 §九 第 23、25 阶段）；**唯 ④ 的 `ONSTART`+`SYSTEM` 注册成功那一条未验证**——本机提权后 `schtasks` 仍被策略拒绝（A-15 / R-15），界面里对应"开机即起"这一档，被拒时自动降级为"登录后自动起"并写明 |
+| R23 | （2026-10-01 追加）**全局网络访问协议要能在仪表盘里选 HTTP / HTTPS**；用户同时交代"生产环境暂时拿不到 SSL 证书，只能先用 HTTP"，所以**默认必须是 HTTP** | `dashboard/Dashboard.cs`（协议两档 + 「TLS 由谁终结」+ 证书框 + 自签一键生成）、`dashboard.cfg` 的 `scheme`/`tls_from`/`tls_pfx`、`server/src/index.js`+`config.js`（`BW_TLS_*` → `https.createServer`）、`installer/run-site.cmd`（同一份 cfg 决定无头起站的协议，证书不在就 rc 4 拒绝）、`installer/Installer.cs`（自检新增「访问协议」一项，探针与地址跟着协议走）、`nginx/bianwang-http.conf`（没证书时的 Nginx 装法） | ✅ 四态实跑（§4.12）：HTTP 默认 · HTTPS+本机证书（https 200 且整站可用、按 http 访问被拒）· HTTPS+前置 Nginx（后端仍明文回环）· HTTPS+证书不在（**拒绝起站**并给三条出路）。⚠️ 未验：证书路径含中文时 `run-site.cmd` 读不到（界面会警告）；重启后的自启确认与 R-15 同因 |
+| R24 | （2026-10-01 追加，**当日被 R25 取代交付形态**）**提供"一键安装压缩包"，包里要含 installer 的 exe 文件与需要被它部署的源码** | `scripts/make-nginx-package.mjs` 加 `--with-exe` → 产物 `bianwang-<版本>-installer-win.zip`（2447 文件 / 26.4 MB）：默认包的全部内容 + 本次现编的 `installer\BianwangInstaller.exe` + `installer\EXE-SHA256.txt`；`Installer.cs` 的「部署包完整性」学会分辨"预置安装器 / 别的 exe / 零 exe"三态并**重算摘要比对**；`Site` 增加 `target.txt` 记忆安装落点 | ✅ 解压到仓库树外、全程用包内那个 exe 跑九步（§4.13：摘要三方一致、自检通过、安装、`--autostart logon` 不带 `--target` 也落对地方、`--live` 200、协议改成 https 后探针如实改口、`口令.txt` 在目标根）。⚠️ 未验：SmartScreen 首次拦截的完整体验（本机无签名，见 R-17）。**这一档现已下线**：`--with-exe` 开关已从出包脚本删除，形态见下一条 R25 / §4.14 |
+| R25 | （2026-10-01 追加）**以 Windows 10、Windows Server 2019 为主要生产环境**，用 Electron 把一键安装所需 exe 与源码**合成一个类似 MySQL 的离线完整安装包**（同轮确认：Electron 完全替换 WinForms 安装器 / 后端跑在 Electron 内建 Node 上 / 单个自解压 exe / 旧的两种 zip 全部下线） | `installer\runtime.cmd`（运行时判定只此一处）接进六个引擎 + `deploy.cmd /inplace` + `installer-app\`（Electron 图形安装器，四段）+ `installer\offline.nsi`（NSIS 3.12，zlib 压缩）+ `scripts\make-offline-package.mjs`（外部二进制按校验值取用 + `.exe` 白名单 + 依赖清单三处同源）；产物 `bianwang-<版本>-offline-win.exe` **171.1 MB**（§4.14，取舍记 D-19，代价记 R-18） | ✅ 本机 Win11：站点那半六道闸全过（2448 文件）→ 随包运行时驱动审计十项 / 就地安装 / 起站 / `/api/menu` 200 / 口令记录在位 → 界面经 CDP 验四段与实访（零页面异常）→ NSIS 出单个 exe。⚠️ **未验**：真·双击过 UAC+SmartScreen、Win10 与 Server 2019 实机（Server Core 无图形子系统，R-19）、`ONSTART`+`SYSTEM`（R-15） |
 
 **刻意不做的三件事**（避免把"备份镜像站"做成侵权分发站）：
 1. 不代抓网盘、不下载小说/EPUB/翻译稿/漫画扫描，不绕过百度盘与登录门槛；镜像只伺服馆员自行放入 `server/data/library/` 的文件。
@@ -154,8 +157,11 @@ Node.js 24.14.1（MIT）· Nginx 1.24+（BSD-2-Clause）· pnpm 11.1.3（MIT）�
 **规则**：每一个要自研的能力，先按"是否有现成开源、是否合需求、是否可二次开发"找一轮仓库，
 许可**落到包自带的 LICENSE / `package.json` 实测**（不看 README 的口头声明、不看搜索摘要），
 能直接用就直接用并登记进 §3.1 与 `THIRD_PARTY_NOTICES.md`；确需自研才自研，并把**排除了哪些现成方案、为什么**留在这里。
-本项目所有轮次的 registry/GitHub API 原始响应留档在 `.scratch-oss-select-a7x2/`（`n-*.latest.json`、`gh-*.json`、`m-*.json`），
-下表每一项都能回指到那份原始件。
+各轮检索时的 registry / GitHub API 原始响应**曾**留档在 `.scratch-oss-select-a7x2/`（`n-*.latest.json`、`gh-*.json`、`m-*.json`），
+下表每一项当时都能回指到那份原始件；**2026-10-01 按用户"清冗余"的指示连 `.scratch-*` 一起删了**（当时给过"全删含截图"的选项，你选了它）。
+所以现在能复核的锚点换成了两件**不会被清掉**的：① 下面两表里逐条写明的仓库地址 + 许可写法原文，
+② `scripts/pin-guard.mjs`——它对每条在册依赖**读包里实际的 `LICENSE` / `package.json`** 再判许可（`pnpm guard:deps` 一跑就重现结论）。
+真要重做这轮检索，按 §3.4.0 的四步漏斗跑一遍即可，原始 JSON 不必找回。
 
 #### 3.4.0 选型过程综述（方法论：为什么这样选，而不是选了什么）
 
@@ -247,7 +253,7 @@ PDF 用自写的裸对象写入器（含 outline 三枚书签），EPUB 用自�
 | 上传 | 内存模式 → 魔数识别（不信扩展名与 Content-Type）→ 5MB 上限 → 落盘改名 | 413 / 415 |
 | 净化 | 服务端 `sanitize-html` 白名单 + 前端 DOMPurify 二道；批注颜色只允许预置 class | 危险标签与事件属性被剥；`data-cke-*` 之类编辑器私有不进库 |
 | 审计 | `data/security.log`（JSONL，超 512KB 轮转），记录登录、吊销、越权、下载、阅览 | 全链路可回溯 |
-| 头 | 严格 CSP（`default/script/style/img/connect/form-action 'self'`，无 `unsafe-inline`）、HSTS、nosniff、`x-powered-by` 关闭 | 生产实例逐头实测 |
+| 头 | 严格 CSP（`default/script/style/img/connect/form-action 'self'`，无 `unsafe-inline`）、nosniff、`x-powered-by` 关闭；**HSTS 与 `upgrade-insecure-requests` 只在真走 TLS 时发**（与会话 cookie 的 `Secure` 同一条判据，见 E-10） | 生产实例逐头实测：明文 HTTP 与带 `x-forwarded-proto: https` 两档各测一次（`full-sweep` 成对断言） |
 
 ### 4.2 检索
 
@@ -530,6 +536,204 @@ winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略
 这轮补验本身抓到并修掉两个真 bug：`creds.cmd /root` 对读不到的目录打印 `[ok] found` 且返回 0（A-14），
 以及开机任务被拒时把"本来还能成"的登录任务与起站一起放弃（A-15）。
 
+#### 4.11.1 收成"一个 exe"：`BianwangInstaller.exe`（2026-10-01，**当日即被 §4.14 的离线包取代**）
+
+> **这一小节记的是 WinForms 那一版**。它的交付形态已经下线（D-19）：装机机上多半既没有 `csc.exe` 也没有 Node.js，
+> "双击现编"这一条前提站不住。所以下面的实跑数字是**历史证据**，不要当操作指引——现在的口径看 §4.14。
+> **但这一版里定下、并且被离线包整条继承下来的东西没变**：四段（自检 / 安装 / 自启选择 / 维护）、
+> 界面只做决策与呈现而 `.cmd` 引擎才是动手的那一份、自启为什么恰好三选一、"判'建成'要读回来"。
+
+用户对口径的追加要求是：**一键安装包应当是一个完整的、带自检 / 安装 / 自启选择的 exe 程序**，
+而不是一堆需要记住名字和顺序的 `.cmd`。形态见 **D-16**。落法是"一个界面 + 一层引擎"，不是重写：
+
+- `Installer.cs`（WinForms，C# 5 级别，`build.cmd` 用系统自带 csc 现编）四段：**自检 / 安装 / 自启选择 / 维护**。
+  它**不复制安装逻辑**，而是调 `env.cmd` / `deploy.cmd` / `autostart.cmd` / `uninstall.cmd` / `creds.cmd`，
+  读回它们的退出码与输出。逻辑只有一份，界面点与命令行跑是同一条代码，不会两套各自演化。
+- 同一个 exe 带脚本出口（`--selfcheck` / `--install` / `--autostart none|logon|boot` / `--live` / `--status` / `--report 文件`），
+  给 SSH、无键盘的机器和自动化用；`--report` 落的是**带 BOM 的 UTF-8**，取证不靠猜控制台编码。
+- `setup.cmd` 退化为**引导器**：没有 exe 就现编 → 用 `--ping` 确认真的能执行（最多 6 次、每次隔 2 秒）→ 开界面。
+  重试不是洁癖：刚写出的无签名 exe 会被实时扫描短暂占住，本机两次实测到"拒绝访问"，等一下就通。
+  没有 csc（.NET 组件被关）或不想开界面时，`setup.cmd /cli` 就是原来的线性四步。
+
+**自启为什么恰好是三选一**，因为背后只有三个真实可用的机制（多给一个选项就是骗人）：
+`none` 不注册；`logon` 写 `HKCU\...\Run` → `BianwangDashboard.exe --autostart`（**免管理员**）；
+`boot` 计划任务 `ONSTART`/`SYSTEM`（要管理员，且客户端 SKU 可能被策略拒 → 降级为 `logon` 并写明）。
+"登录态为什么不建 `ONLOGON` 任务"是实测结论：**非提权时 `schtasks /create /sc onlogon` 也被拒**（与 A-15 同一条策略线，R-15 里补记）。
+写完 Run 键之后**读回来核对**，不看"写函数返回成功"就算建成（A-14 的口径）。
+
+**自检里最要紧的一条仍然是"真跑一次 import"**：探针写进 `api\` 里、由 `node` 真 `import` 那 11 个启动期包、再删掉，
+并且要**祖先链上没有别的 `node_modules`** 才算"目录自足"。这一条本轮自己踩到两个假判据（A-17 里记），
+都是"检查会撒谎"的同一类：把被测目录自己的 `node_modules` 算成祖先链、把安装器自己现编的 exe 算成"预置二进制"。
+
+**实跑状态**（真包解压到仓库树外，祖先链无 `node_modules`，Windows 11 专业版非提权）：
+自检十项判定与已知事实逐条对上（依赖真解析过 · 端口三态分开判 · 目标可写探针建在正确的祖先上）；
+安装 rc 0 → **第二次安装（更新）rc 0**（此前会被 `deploy.cmd` 判成"自己拷自己"而 rc 6，见 A-17）；
+自启三形态：`logon` 写键并读回 + 站点 HTTP 200 + `口令.txt` 落在**站根**、`none` 不注册且幂等、`boot` 未提权如实 rc 1；
+`--live` rc 0；GUI 四段实点（`ClientToScreen` 定位 + 键盘 Ctrl+Tab 也能走完四段，键盘可达性顺带验了）、
+维护段"只停服务与自启"确实撤掉 Run 键并停站而文件全留。
+**仍未验证**：`boot` 在提权且策略允许的机器上注册成功那一条（R-15）。
+
+### 4.12 全局访问协议：HTTP / HTTPS 选一档（默认 HTTP）
+
+需求（R23）："仪表盘程序中还应可以选择该项目**全局**的网络访问协议是 HTTP 还是 HTTPS"。
+"全局"这两个字是这件功能的难点所在——**一个只在界面上改字的地方不叫全局**。所以它的落点是四层的：
+
+| 层 | 落点 | 这一层真的变了什么 |
+| --- | --- | --- |
+| 选择与呈现 | `dashboard/Dashboard.cs` 第一栏「访问协议」两个单选 + 「TLS 由谁终结」两个单选 + 证书框 + 「生成本机自签证书」按钮 | 状态行、`在浏览器打开`、端口占用提示三处 URL 全部由 `SiteUrl()` 组装，不再有第二处写死 `http://` |
+| 持久 | `%LOCALAPPDATA%\Bianwang\dashboard.cfg` 的 `scheme` / `tls_from` / `tls_pfx`（与 `port` 同处一份） | 存成 key=value 全量重写，**认不出的键也保留**——别的脚本往里写过的东西不该被界面一次保存抹掉 |
+| 无头执行 | `installer/run-site.cmd` 读同一份 cfg：`https`+`node`+证书在 → 给 node 设 `BW_TLS_PFX`；`https`+`nginx` → 后端仍明文只听回环；`https`+证书不在 → **退出码 4 拒绝起站** | 开机自启那条路上没人能点界面，所以判据必须能脱离界面成立 |
+| 监听本身 | `server/src/index.js`：`resolveTls()` 决定 `http.createServer` 还是 `https.createServer`；`config.js` 收 `BW_TLS_PFX[_PASS]` / `BW_TLS_KEY`+`BW_TLS_CERT` | 证书读不到就 `process.exit(1)` 并说明缺哪一样，**不退回明文**。`口令.txt` 与启动日志印的协议跟着真实监听走 |
+
+**默认必须是 HTTP**（用户交代：生产环境暂时拿不到 SSL 证书）。这条决定了三件事的取向：
+不给证书时一切照旧（`resolveTls()` 返回 http、`run-site.cmd` 不设 TLS 环境变量、界面默认选中的就是 HTTP）；
+`nginx/bianwang.conf` 那份"80 一律 301 到 https"的形态**不能是唯一的选项**，于是加了 `nginx/bianwang-http.conf`
+（防护齐、去掉 TLS 与 HSTS——HSTS 故意不发，它一旦发布就很难撤回）；
+以及会话 cookie 的 `Secure` 不能再按 `NODE_ENV` 硬加，见 A-20。
+
+**"TLS 由谁终结"这个子选择不是装饰**。同一句"我要 HTTPS"在两种拓扑里意思不同：
+Windows 单机没有 Nginx，只有后端自己持证书才真的加密；有 Nginx 的生产机，后端就该继续只听回环明文，
+让证书留在边缘。两档都给，并且**各自写清自己不管什么**：选 Nginx 时界面与安装器都明说
+"本程序不校验 Nginx 是否配好、证书是否有效"，不假装看得见别人那一侧。
+
+**自签证书只用系统自带能力**（选型铁律的顺序：先找现成 → 这里现成的是 Windows 自带的 `New-SelfSignedCertificate`
++ `Export-PfxCertificate`，因此**不需要**引入 node-forge / selfsigned 这类包，许可台账一字不改）。
+实测本机非管理员可成：签在 `Cert:\CurrentUser\My`，SAN 含 `localhost`、计算机名与监听地址，一年期，
+导出 2,742 字节 pfx（空口令，私钥边界＝NTFS 权限，这一点写进对话框）。
+点按钮前那次 MessageBox 是内容的一部分：自签＝浏览器告警、只适合内网/自用、正式站点请换域名证书或交给 Nginx。
+
+**实跑状态**（Windows 11 专业版，非提权；`--autostart` 路径直接触发起站逻辑，不靠点击）：
+
+| 用例 | 结果 |
+| --- | --- |
+| HTTP 默认档 | `http://127.0.0.1:18901/api/menu` 200，同一端口按 https 访问 `EPROTO`（证明它确实是明文，不是"看起来像"） |
+| HTTPS + 本机后端（证书在） | `https://127.0.0.1:18912/api/menu` 200（710B）、`https://…/` 200 且回的是 `index.html`（1117B，整站在 TLS 后面可用）；同一端口按 http 访问 `ECONNRESET` |
+| 按真实信任链访问 | `rejected: DEPTH_ZERO_SELF_SIGNED_CERT` —— 界面上那句"浏览器会先告警"是实测结论，不是免责装饰 |
+| HTTPS + 前置 Nginx | 后端仍按明文 HTTP 起（200），日志与界面都写明"443 与证书归 Nginx，本程序不校验" |
+| HTTPS + 证书不在 | 仪表盘**不起站**并打印三条出路（本机截图 `gui-A-nocert.png` 随会话内的取证目录一起清掉了，2026-10-01 你定的清理；事实以本行与 §4.12 那段拒绝口径为准，换机复核时按同样配置再点一次就能重现这个界面）；`run-site.cmd` 同样拒绝、退出码 4、端口无人监听 |
+| 安装器自检「访问协议」项 | 四态各给各的结论（提示/提示/通过含到期日/失败含拒绝起站的预告），报告为带 BOM 的 UTF-8 |
+| 站点跑起来时 | 协议控件整排置灰：中途改协议会让界面显示 https 而进程还在明文听，那比不给开关更糟 |
+
+**仍未验证 / 已知限制**：① 证书路径含中文时 `run-site.cmd`（cmd 按 OEM 码页读配置）读不到——界面会警告，
+但没有替用户改成 ASCII 路径；② `--autostart` 沿用协议这条链只验到"起站正确"，没做**重启后**的实机确认（与 R-15 同一台机器差异）；
+③ 浏览器里点「在浏览器打开」看告警页的样子没截图（自签告警是浏览器行为，已用信任链拒绝测过等价事实）。
+
+### 4.13 两种包形态：零 exe 与"预置安装器 exe"（**已下线，见 §4.14**）
+
+> **这一小节整节是历史**：2026-10-01 当天用户就改口成"离线完整安装包 + 源码"两种资产，两种 zip 全部停止交付（D-19）。
+> `--with-exe` 这个开关已经从 `make-nginx-package.mjs` 里**删掉**（不是留着兼容——它会指向已退役的 `Installer.cs`，
+> 留着等于让下一次出包去编一个不再交付的东西）。站点树本身还在：它是离线包的输入，也是 Linux / Nginx 路线的产物。
+> 下面那张"两种形态"的表与九步实跑，读的时候当作"当时为什么那样取舍"，不当作操作指引。
+
+需求（R24）："提供一键安装压缩包（**包括 installer exe 文件**和需要用 installer 部署的源码）"。
+这与 D-15/A-6 立的"不预置二进制"是有张力的，所以处理方式是**加一档、不推翻原档**：
+
+| 形态 | 产物名 | 生成命令 | 包里有什么 exe | 什么时候用它 |
+| --- | --- | --- | --- | --- |
+| 默认（原样保留） | `bianwang-<版本>-nginx.zip` | `node scripts/make-nginx-package.mjs --write --zip` | **零** | 目标机有 `csc.exe`、允许双击后等一次编译 |
+| 含安装器 | `bianwang-<版本>-installer-win.zip` | 上一条命令加 `--with-exe` | 有且仅有 `installer\BianwangInstaller.exe` | 目标机没有/关掉了 .NET 组件、被实时扫描拦刚编出的 exe（A-16）、或就要"解压即双击" |
+
+三条不让这一步变成"随便发个二进制"的约束：
+
+1. **exe 必须本次现编**。`--with-exe` 先跑 `installer\build.cmd`（同包那份 `Installer.cs`），编不出来就**拒绝出包**——
+   而不是抓一份本机遗留的 exe 塞进去。这正是 A-6 当年冻结旧快照的同一件事，只是换了方向。
+2. **摘要要能验，而且要验得到**。exe 的 sha256 写进 `installer\EXE-SHA256.txt`，同时**必须出现在 `SHA256SUMS.txt`**（A-21 修的就是这点：
+   `walk()` 按"运行态"口径过滤 `.exe`，结果唯一的制品恰恰不在校验清单里）。安装器自检会**重算并比对**：
+   一致 → 通过；缺摘要 → 警告；不一致 → **失败**并直说"这个包可能被替换过"。
+   **摘要只能"包内自证"，不能拿上一轮的数字当基准**（A-23：`csc.exe` 不保证逐字节可复现，同一份源码两次编出 `f7b5101f…` 与 `fb5942bb…`）。
+   所以任何"这个 exe 和文档里写的不一样"的核对，比的必须是**同一个包内**的三处（文件本体 / `EXE-SHA256.txt` / `SHA256SUMS.txt`），
+   而不是跨包比数字。
+3. **只多这一个文件**。仪表盘仍然目标机现编（`deploy.cmd` 调 `dashboard\build.cmd`），出现第二个 exe 就红。
+   两种形态除这一个文件外内容与闸门完全相同。
+
+**实跑**（解压到仓库树外，全程用**包里那个 exe**，不是本机另编的；`--target` 只给一次）：
+
+| 步 | 结果 |
+| --- | --- |
+| 摘要三方一致 | `EXE-SHA256.txt` = `SHA256SUMS.txt` = 实际文件（九步实跑用的那份包是 `fb5942bb…`，53,248 字节；它之前一次出包、同一份源码编出的是 `f7b5101f…`，成因见 A-23。**这两个数字都不构成"基准值"**——本文档所在的包里的 exe 又是另一次编译的产物，核对只在包内三处之间做） |
+| `--ping` | 0（解压出来的 exe 可直接执行，无需等实时扫描） |
+| `--selfcheck --report` | rc 0；「部署包完整性」判**通过**并写明"预置安装器与随包摘要一致（未签名）"；「访问协议」按 cfg 给默认档结论 |
+| `--install --target <临时目录> --port 18931` | rc 0；`api\src\index.js` 就位、`dashboard\BianwangDashboard.exe` 在目标机现编出来、落点记进 `installer\target.txt` |
+| `--autostart logon`（**不带** `--target`） | rc 0；用的是记下来的落点（A-22 修的就是这件事），HKCU Run 值读回存在 |
+| `--live` | rc 0，`/api/menu` 200 |
+| 把 cfg 改成 `scheme=https`（无证书）后再 `--live` | rc 4「没有应答」——证明探针跟着记录的协议走，而不是永远写死 http |
+| 改回 `scheme=http` 后 `--live` | rc 0 |
+| 独立探针 | `http://127.0.0.1:18931/api/menu` 200、同端口 https 访问 `EPROTO`；`口令.txt` 落在**目标根**（不在包根） |
+
+未验：这台机器上没法验"SmartScreen 首次拦截"的完整体验（本机已跑过多次同类 exe）。但**"杀软处置"这一条本轮真撞上了**：03:4x 那份在 `%TEMP%` 下跑通九步，10:5x 之后同样位置同样源码编出的那份**一执行就消失**，见 A-24 与 R-17——所以这份表格写的是"03:4x 那一次的结果"，不要当成长期保证。
+
+### 4.14 离线完整安装包：一个 exe 两个身份（2026-10-01，当前形态）
+
+需求（R25）："**以 Windows 10、Windows Server 2019 为主要生产环境**，用 Electron 将一键安装所需 exe 文件、源码打包在一起，**类似 MySQL，合成为一个离线完整安装包**"。
+同轮确认的三个决定：Electron **完全替换** WinForms 安装器；后端**就跑在 Electron 内建的 Node 上**（不是再装一个 Node）；形态是**单个自解压 .exe**。旧的两种 zip 因此全部下线。
+
+**为什么这一版值得推翻 D-16/D-18**：那两档各自预设了装机机上有一个它通常没有的东西——`csc.exe`（.NET 组件可能被关）或 Node.js（内网机器根本不让联网装）。
+MySQL 的离线安装器之所以是"那一个 exe"，就是因为它把**运行时 itself** 装进去了。本站照抄这个思路，代价写在 R-18（26 MB → 171 MB）。
+
+**一个 exe 两个身份**（本轮最要紧的实测结论，也是版本号是硬约束的原因）：
+
+| 怎么起它 | 它是什么 | 谁在用 |
+| --- | --- | --- |
+| 带 `ELECTRON_RUN_AS_NODE=1` | **Node 24.21.0**（Chromium 152.0.7977.130 / V8 15.2.124.28），行为与 `node 脚本 参数` 一致 | `run-site.cmd` 起后端、`deploy.cmd /inplace` 播种、仪表盘的依赖探针与起站 |
+| 直接双击 | `resources\app` ＝ 四段图形安装器（自检 / 安装 / 自启选择 / 维护） | 你，以及 NSIS 装完那一步 |
+
+`runtime\BianwangRuntime.exe` 就是 Electron 44.5.1 的 `electron.exe` 改名（出包时顺手删掉 `resources\default_app.asar`，否则不带 `ELECTRON_RUN_AS_NODE` 双击会起一个演示窗口而不是我们的安装器）。**版本是承重的**：Electron 33.4.11 内建 Node 20.18.3，**低于本项目 `engines` 的 ≥ 20.19.0**，选了它等于交付一个自己不合格的运行室（A-27）。出包脚本因此**不装 `electron` / `electron-packager` / `electron-builder` 任何一个 npm 包**——只按校验值取官方 Windows x64 运行包（后者还会拖进 `7zip-bin`，用户明确要避开 7z 二进制）。
+
+**运行时判定只有一处口径**，但必须写两遍才够——一遍给批处理、一遍给 JS，两边语义逐条对齐（这一条是"两份实现迟早漂"的已知风险，所以出包第三道闸比对的不是它，是依赖清单）：
+
+| | 批处理侧 `installer\runtime.cmd` | JS 侧 `installer-app\core.cjs:resolveRuntime()` |
+| --- | --- | --- |
+| 顺序 | 随包 `runtime\BianwangRuntime.exe` → PATH 上的 `node` | 同 |
+| 导出 | `BW_NODE` / `BW_RUNTIME_KIND` / `BW_RUNTIME_VER`，随包那一路 `export ELECTRON_RUN_AS_NODE=1` | 返回 `{exe, kind, ver, asNode}` |
+| 拒绝 | 版本低于 20.19.0 → **rc 3**（不硬跑）；两个都没有 → rc 1 | 判"失败"并禁用安装按钮 |
+| 实现要点 | **不做顶层 `setlocal`**：`call` 之后变量要留得住；逐段数字比较放在本地 `:compare` 里，用 `endlocal & set` 把结论导出来 | `PKG_ROOT` 从 `process.execPath` 反推（不是 `__dirname`，因为它住在 `runtime\resources\app` 里） |
+
+六个引擎全部改接它：`setup.cmd`（不再现编任何东西，`/rebuild` 随之删掉）、`env.cmd`（随包时明写"运行时由包自己提供，**不需要装 Node.js**"）、`deploy.cmd`、`run-site.cmd`、`creds.cmd`、`uninstall.cmd`（进程过滤加了 `BianwangRuntime.exe`，否则卸不掉）。
+
+**就地安装 `/inplace`**：NSIS 是"解到哪儿就装在哪儿"，所以 `deploy.cmd <目标> /inplace` 跳过 robocopy（400 MB 自己拷自己），只做三件事——核对内容、缺数据时用随包运行时跑一次 `api\scripts\reseed.js` 并删掉生成的 `.secret`、调 `dashboard\build.cmd` 现编仪表盘。拷贝路径仍然保留（目标 ≠ 包根时），此时 `runtime` 一并进拷贝目录清单。
+
+**安装器界面**（`installer-app/`，Yan · archival · moderate，见 §二 与 `USAGE.md` §10）：`core.cjs`（运行时/引擎调用/探针/注册表回查）+ `audit.cjs`（十项自检）+ `actions.cjs`（安装/自启/起停/卸载）+ `main.cjs`/`preload.cjs`（IPC，单一实例锁）+ `ui/`。**`core.cjs` 里不许 `require('electron')`**——它同时也是"以 Node 身份跑"时要用那份逻辑，绑死 Electron 就起不了后端。批处理调用一律 `windowsVerbatimArguments: true`（A-28），输出**按整行 UTF-8 解、出现 U+FFFD 才退回 GBK**（`chcp` 前缀会把带空格的引号路径截断）。
+
+**打包外壳用 NSIS 3.12**（zlib/libpng 许可，用户当场批准；**不是** Inno Setup——那要看它的许可证走向，也不是自研 zip 尾部拼 exe）。四条实测口径记在 A-29：`.nsi` 必须 **UTF-8 带 BOM**；LogicLib 没有 `!~`（只能 `!=`）；`makensis.exe` 得待在 `<root>\Bin\` 里才找得到自己的 `Stubs`；`OutFile` 是相对 **.nsi 所在目录**解析的，不是 cwd。`SetCompressor /SOLID zlib` **是许可问题不是性能问题**：bundle 的 COPYING 写明 LZMA 模块是 CPL-1.0、bzip2 是 bzip2 许可，换压缩器要重新批准（体积从 171 MB 可能压到 ~120 MB，但那不是我能自己定的取舍）。卸载器 `$INSTDIR\installer\uninstall-offline.exe` 先把自己拷进 `%TEMP%` 再删树（`uninstall.cmd` 同一条理由：cmd 逐行懒读，边删边读会把成功打成失败）。
+
+**出包命令与闸门**：`pnpm package:offline` → 先复用 `make-nginx-package.mjs --write`（六道闸一条不少），再铺 `runtime\`，再加**三道**——外部二进制按 sha256＋字节数取用、交付物内 `.exe` 白名单（只 `runtime\`）、依赖探针清单三处同源（`installer\startup-imports.json` ↔ `installer-app\core.cjs` ↔ `dashboard\Dashboard.cs`）。
+
+**实跑**（本机 Win11 专业版；**没跑真·双击**，那要过 UAC，留给你在目标机上做）：
+
+| 步 | 结果 |
+| --- | --- |
+| 站点那半六道闸 | 通过：软链接 0 · 孤立自足性真起后端 + `/api/menu` 200 · `.cmd` CRLF+ASCII · 零 exe · 条目名 0 条 `\` / 0 条非 ASCII · 2448 个文件 |
+| 外部二进制按校验值 | `electron-v44.5.1-win32-x64.zip` 157,998,329 B / `9b382492…d7db`、`nsis-bundle-3.12.tar.gz` 6,227,143 B / `fe36a357…feed` 两条**核对通过**（后者是 SourceForge 当日全 522 时改用的镜像，见 `THIRD_PARTY_NOTICES.md` §1.2） |
+| 二进制白名单 | 1 个 `.exe`，在 `runtime\` 内（`runtime/BianwangRuntime.exe`）；`runtime\` 共 81 个文件 / 367.1 MB |
+| 依赖清单三处同源 | 11 项一致（比对接受单双引号两种写法） |
+| 随包运行时驱动引擎 | `runtime.cmd` 判成"随包"、Node 24.21.0；安装器审计**十项判定全对**；`deploy.cmd /inplace` 就地安装；`run-site.cmd` 起站；`/api/menu` **200**；`口令.txt` 落在站根 |
+| 界面 | CDP 驱动：十项自检渲染齐、四段切换走得通、"实访"按钮 rc 0、**零页面异常**；截图与计算样式两处核对（Yan archival 契约，`pnpm audit:ui` 顺带过） |
+| 部署后验收（**新增**，本轮补的洞） | 直接对出包暂存树跑 `ops-extras/verify-deploy.mjs`，后端由 `BianwangRuntime.exe`（`ELECTRON_RUN_AS_NODE=1`）起在 8899：只读 **26 项 0 失败**；加 `--mutate` 走写链路 **36 项 0 失败**（建档 201 → 修订 → 两版词级比对 → 置顶 → 删除自清 → 台账里留 `alive=false`）。INFO 1 项是 `/assets/` 的 `immutable`——只有经 Nginx 才成立，不是故障（F-15 那条口径） |
+| 包内文本 ＝ 仓库文本（**出完之后回读一遍才算**） | 逐件比 sha256，**33 件全 SAME、差异 0**：后端四件（`index.js` / `config.js` / `security/middleware.js` / `security/media.js`）、五份 `docs/*.md`、九个 `.cmd` 引擎 + `startup-imports.json` + `offline.nsi`、`runtime\resources\app` 九件（`core` / `main` / `actions` / `audit` / `preload` / `package.json` / `ui` 三件）、`Dashboard.cs`、三份 nginx、`ops/verify-deploy.mjs`（这一步现在是 `scripts/check-package-parity.mjs` 而不是手工点验：本轮改动同时落在 `server/` 与 `installer-app/` 两侧，靠它确认交付树带着修好的中间件；不一致就退出 1）。这一步还抓到过"包内说明还是旧形态的假话"（A-31）。`grep -rln BianwangInstaller` 在整棵树里只剩**四处**：两份历史叙述（`docs/DEVELOPMENT.md`、`docs/README.md`，那是"上一轮怎么验的"的记录）与退役件自己（`installer\Installer.cs` + `build.cmd`）。**2026-10-01 问过要不要一并清掉，你选了留着**（所以它们继续随包；哪天要删，`Installer.cs` 与 `build.cmd` 都是 untracked，删了不可恢复） |
+| NSIS | `makensis` 退出 0 **且产物存在**才搬进 `outputs\package\`；产物 **171.1 MB 量级**（本轮因包内文本改动重出过好几件，字节数就在 179.3–179.4 MB 之间浮动——包内任何一份文件变一个字节，外层摘要就变）。**本文不写"当前摘要＝某串十六进制"**：`docs/` 是打进包里的，把摘要写进 `DEVELOPMENT.md` 就等于"内容依赖自己算出来的值"，写完必须重出、重出后那句话立刻过期（本轮真绕了一遍，见 A-32）。权威值只看**当轮**的 `outputs\package\SHA256SUMS-offline.txt` 与 Release 说明那一行，核对只对那两处 |
+
+> 这几件的差别**全在包内文本**：最早那件带着旧形态的假说明（A-31），后面几件改的是 `autostart.cmd` 的注释与本文件自己——代码一条没动，外层摘要照样每件不同。
+> **所以本轮把收尾口径定死两条**：① 文档里不写当前摘要（写了就自指，A-32）；② **出包是一轮的最后一步**，出完之后任何文字改动都只进"下一件"。
+> 核对只对**当轮**的 `SHA256SUMS-offline.txt` 与 Release 说明那一行，别拿上一轮的数字（A-23 同一条口径）。
+
+**仍未验证**：① 真·双击过 UAC + SmartScreen 的完整体验（本机代跑不了提权）；② Win10 / Server 2019 **实机**——官方支持面只写 "Windows 10 and up"，而 Server Core 根本没有图形子系统（R-19）；③ `ONSTART`+`SYSTEM` 注册成功那条（R-15，本机提权也被客户端策略拒）；④ Server Core 上 Electron 以 Node 身份能不能起（与 ② 同一台机器差异，`USAGE.md` §10 已写退路：删 `runtime\` 换系统 Node）。
+
+#### 4.14.1 收口这一轮：退役形态的口径清理（同日）
+
+离线包出来后还有半件事没做完：**"让运维双击 `BianwangInstaller.exe`"这句话还在十几个地方活着**。逐条清的过程：
+
+| 落点 | 原本写着 | 现在 |
+| --- | --- | --- |
+| `make-nginx-package.mjs` | `--with-exe` 整条支路（现编 WinForms 安装器、写 `EXE-SHA256.txt`、 exe 摘要并回清单） | **删掉**，不是留着兼容——它指向已退役的 `Installer.cs`，留着等于让下一次出包去编一个不再交付的东西。第五道闸收成一句"站点树零 `.exe`" |
+| 包内 `README-FIRST.md` / `MANIFEST.md` | "双击 `setup.cmd`，它用 `csc.exe` 现编出安装器（本包不预置任何 exe）"；清单里没有 `runtime/` | 出包多一步 `rewriteDocs()`（A-31）：改成本包口径 ＋ 加 `runtime/` 行 ＋ 写明两半各由哪个摘要自证；**找不到那段旧文本就拒绝出包** |
+| `installer\autostart.cmd` 四处注释与提示 | "由 `BianwangInstaller.exe` 第三段选出来"、"Run 键由 `BianwangInstaller.exe` 写" | 改成"安装器界面（`runtime\BianwangRuntime.exe`）"。改完重新量一遍：270 行全 CRLF、零高位字节（第四道闸校的就是这个） |
+| `README` §一 目录树 / §七 / §九 · `USAGE` §10 全节 · `DEPLOY` §一 B 与 §六 | 九步实跑、三方摘要、`--selfcheck/--live/--autostart` 这些**已不存在的命令行动词** | 换成十项自检、`/inplace`、`runtime.cmd` 那一行；历史数字留在 `DEVELOPMENT` 并标"上一轮"，操作文档里一条不留 |
+| `DEVELOPMENT` §4.11.1 / §4.13 / D-16 / D-18 / R-17 / §八 / §九 | 读起来像"当前形态" | 逐处加"已被 D-19 取代"的帽子并指回 §4.14；**纪实本身不删**（那些坑是这台机器上真撞过的），只把"照做"改成"当时" |
+
+三个顺手改掉的真错（不是措辞）：① `USAGE` 写"`/cli` 不依赖任何 exe"——**错**，它仍以随包运行时当 Node，那也是个 exe；Core 上能不能起来本轮没实机验，文档改成"不行就删 `runtime\` 换系统 Node"。
+② `USAGE` 的自检表里"祖先链无 `node_modules`"这条判据被我从界面那项里摘掉——它现在住在**出包的孤立自足性闸**里，界面上没有；留在原处就是让运维以为界面会验它。
+③ §十 待办里"确认 `node` 在 `SYSTEM` 的 PATH 里"这条对离线包已经不成立（`run-site.cmd` 先解析随包运行时），只有删了 `runtime\` 才回到老问题。
+
 ---
 
 ## 五、决策记录（ADR 摘要）
@@ -551,6 +755,11 @@ winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略
 | D-13 | 日志聚合自研约 150 行，**不引第三方日志栈** | pino+pino-roll（MIT）/ Loki、Grafana、Tempo（AGPL-3.0）/ Graylog（NOASSERTION）/ Vector（MPL-2.0） | 许可实测与取舍逐条记在 §三 3.4；`audit()` 只有一个写点、事件名与字段已是稳定契约，将来换 transport 不动业务代码 |
 | D-14 | 生产依赖全部精确 pin，并用 `pin-guard` 在 `prebuild` 挡人 | 保留 `^` 范围符 + lockfile | 交付物是"解压即上 Nginx"的包，重装拿到不同版本不可接受；CKEditor 与 pdfjs 都是"大版本换 API"的库（C-3、D-9）。守卫顺带核许可白名单与用途登记 |
 | D-15 | **发布只给两种形态：一键安装包 + 源码**（release 不再摆裸 `web/dist` 压缩包与单个 exe） | 三种资产并存（部署包 + `nginx-html-webdist.zip` + `BianwangDashboard.exe`）/ 只发源码 | 部署包**已经**含仪表盘源码与 `installer/`，再单摆一个 exe 等于同一东西两个出处，还违背"不预置二进制"（A-6/A-11：预置产物会带着改之前的旧快照被分发出去）；`nginx-html-webdist.zip` 是"只要静态页"的第三种人设，而本站后端本来就读 `web/dist` 自伺服，拆出来反而诱导人只拷前端、得到一套没有接口的页面。两类各覆盖一种人：**要跑起来** → 一键安装包；**要读代码或自己构建** → 源码 |
+| D-16 | **一键安装包的形态 = 一个 exe（`BianwangInstaller.exe`，目标机现编）+ 一层 `.cmd` 引擎**，`setup.cmd` 只做引导〔**形态已被 D-19 取代**：exe 不再目标机现编、界面改由 `installer-app/` 承担；但本条那条**不随形态变的原则仍然生效**——"界面只做决策与呈现、`.cmd` 引擎才是动手的那一份"〕 | ① 继续只给一串 `.cmd`（`setup` + 六个引擎，本轮再加 `build`）；② 把安装逻辑整体翻成 C#、删掉脚本；③ 直接发布一个编好的 exe | 用户明确要"一个完整的、带自检/安装/自启选择的 exe 程序"——这些脚本要记名字和顺序，不算"一个程序"。但**不因此重写安装逻辑**：那六个 `.cmd` 本轮已实测过分支与拒绝路径（A-12~A-15 全是它们身上抓出来的），翻成 C# 等于把验证过的东西换成没验证过的东西，还会把批处理六条语法定律的坑再踩一遍。所以 exe 做**决策与呈现**（自检判定、三选一的降级、回查核对），脚本做**动手**（robocopy / schtasks / reg / node），退出码与输出回传界面。③ 违反 D-15/A-6 同一条理由；① 不满足需求。代价是双击路径上多一次编译，用 `--ping` 重试吸收掉（A-16） |
+| D-17 | **访问协议 = 界面选档 + 三层跟随**（`dashboard.cfg` 是唯一事实源，后端 / `run-site.cmd` / 安装器都从它取值），并且**缺证书时选择拒绝启动而不是退回明文** | ① 只改界面显示与"打开站点"的链接（不做后端 TLS）；② 只做后端 TLS，不給"前置 Nginx"档；③ 只支持 Nginx 终结，本机不持证书；④ 引入 `selfsigned` / `node-forge` 之类包来出证书 | 需求写的是"**全局**的网络访问协议"，所以判据是"有没有第二处还写死 `http://`"——只改显示就是假开关（① 出局）。② 与 ③ 各自只覆盖一种拓扑：Windows 单机没有 Nginx，不给后端 TLS 就等于 HTTPS 这一档在这台机器上根本用不了；而有 Nginx 的生产机让 node 自签反而多一份私钥落点，两档都给才诚实。**拒绝退回明文**这条是取舍的核心：静默降级会让操作员以为链路已加密，比不起来更糟（同一判据也写进 `run-site.cmd` 的 rc 4）。④ 违反"先找现成、且只收宽松许可"的顺序里更前面的那条——Windows 自带的 `New-SelfSignedCertificate` 就能成，不必给仓库添一个私钥库 |
+| D-18 | **交付分两种包形态**：`bianwang-<版本>-nginx.zip`（零 exe，维持 D-15/A-6）与 `bianwang-<版本>-installer-win.zip`（含本次现编的安装器 exe + 随包摘要） | ① 直接改成"永远预置 exe"、把零 exe 闸门废掉；② 拒绝含 exe，只讲道理让用户自己编；③ 含 exe 但允许从本机抓一份现成的塞进去 | 用户明确要"包括 installer exe 文件"的包（R24），而 D-15 的理由仍然成立——**目标机现编**防的是"把改动之前的快照当制品分发"（A-6/A-11 就是这么发生的）。所以不推翻原档、只加一档：① 废掉闸门等于把 A-6 的教训丢掉，而且零 exe 那份对"必须有 csc 才装"的机器才是主路；② 是不尊重需求；③ 最危险——本机那份 exe 来历、新旧、是否被改过都不确定。③ 的替代做法是**出包时强制现编**（编不出来就拒绝出包），并让摘要进 `SHA256SUMS.txt`、由安装器自检重算比对，于是"预置"仍然可追溯到源码。代价：多一个未签名二进制的分发面（R-17），以及两条出包路径都要各自验一遍 |
+
+| D-19 | **交付收成一个离线完整安装包**：`bianwang-<版本>-offline-win.exe`（NSIS 自解压）里装「站点 + 随带运行时 + 图形安装器」，运行时与安装器**共用同一个 Electron 可执行文件**（`runtime\BianwangRuntime.exe`：带 `ELECTRON_RUN_AS_NODE=1` 是 Node 24.21.0，不带就是四段界面）；WinForms 安装器退役，`.cmd` 引擎仍是唯一的逻辑 owner | ① 维持 D-18 两种 zip（要嘛目标机有 `csc.exe`，要嘛预置一个未签名小 exe）；② 用 `electron-builder`/`electron-packager` 出包；③ 安装器与站点运行时**各带一份** Electron；④ 自研一个"zip 尾部拼 exe"的自解压壳 | 用户指定（针对 Win10 / Server 2019 生产环境，"类似 MySQL 的离线完整安装包"）。① 的两种形态各自留了一个装机机做不到的前提（没有 .NET 组件 / 杀软拦刚解出的 exe），而装机机多半**也没有 Node.js**——D-18 完全没解决这一条，本轮才解决。② 会拖进 `7zip-bin`（用户明确要避开 7z 二进制）与一整条 npm 依赖链，还会动到 `pin-guard` 的许可台账；本轮改为"官方 zip 按 sha256 取用 + 自己拷改名 + 系统 `tar.exe` 解压"，npm 依赖一个不加。③ 体积直接翻倍（Electron 解包 368 MB / 份），而"同一个 exe 两个身份"是零成本的：`ELECTRON_RUN_AS_NODE` 是官方支持的入口。④ 自己造自解压格式等于把 A-25 那类"只在生它的那台机器上解得开"的风险请回来，而且 NSIS 本身就是 zlib 许可、正合规矩。代价：交付物从 26 MB 涨到 171 MB（R-18），以及 Electron 在 Win10/Server 2019 实机未验（R-19） |
 
 ---
 
@@ -695,9 +904,185 @@ winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略
   然后**绕开调度器直接把站点拉起来**（`start "" /b`，因为 `run-site.cmd` 会占住控制台），
   再照旧探端口确认，最后才以 rc 4 退出。实测：`/port 16077` → 打印拒绝原因与"重启后不会自愈"的明示 →
   `[ok] site is up on http://127.0.0.1:16077`，`/api/menu` 与 `/` 都回 200，`口令.txt` 照样落在站点根。
-  顺带把这条机器差异写进 `USAGE.md` §10.3（Server 2019 是 ProductType 2，那条路 normally 通，但**仍未实跑**）。
+  顺带把这条机器差异写进 `USAGE.md` §10.4（Server 2019 是 ProductType 2，那条路 normally 通，但**仍未实跑**）。
+  同一轮补测：**非提权下 `schtasks /create /sc onlogon` 同样被拒**（还是那条"作为批处理登录"策略），
+  所以"登录后自动起"这一档**不建任务**，改由安装器写 `HKCU\...\Run`（§4.11.1）；上面那句"继续注册 ONLOGON 任务"
+  指的是提权窗口里 `boot` 档的降级分支，与"登录后自动起"是两回事，别混成一个机制。
   教训：**一项能力失败时，不要把还没失败的能力一起撤掉**；降级路径要把"还剩什么、缺什么"说清，
   否则用户只能靠猜来决定要不要换台机器。
+
+- **A-16 被派生的站点会"扣住"调用方的 stdout 管道，于是一个跑得很好的站把安装过程卡到超时**（做图形安装器时撞到）：
+  安装器用 `RedirectStandardOutput` 读 `autostart.cmd`，而 `autostart.cmd` 用 `start "" /b run-site.cmd` 起站点——
+  那个孙进程**继承了同一根管道**，只要站点活着管道就不 EOF。于是 `Start-Process -Wait`、`cmd | findstr`、CI 步骤全部挂住，
+  症状是"安装没报错但永远不返回"，看起来像安装器死锁，实际站点 HTTP 200 得好好的。
+  四种写法逐一实测（`start /b "x.cmd"` / 加 `>nul` / `start /b cmd /c "…" >nul` / `start /min`），**全都留不住管道**。
+  修法分两层：`autostart.cmd /site:none` 从此**只记端口、不负责起站**（起站交给安装器）；
+  安装器用 ShellExecute（`UseShellExecute=true` + `WindowStyle=Hidden` + 显式 `cmd /c`）另起独立会话，再自己探端口给结论。
+  顺带两个小坑：ShellExecute 直接把 `.cmd` 交给它会起一个**没有参数的交互 cmd**（打印提示符、不干活），必须显式 `cmd /c`；
+  以及**刚编出来的无签名 exe 立刻执行会报"拒绝访问"**（实时扫描占住新文件，本机两次复现，等一下就通），
+  所以 `setup.cmd` 在开界面之前用 `--ping` 重试 6 次而不是把这句话推给用户。
+  教训：**"子进程继承句柄"是交付物里的隐形依赖**——凡是"我起一个长命进程"的地方，都要问一句"谁在等我这根管道"。
+
+- **A-17 三条"会撒谎的检查"**（同一轮里一起抓出来的，都属于 F-18 那一类：PASS 不等于因真实原因 PASS）：
+  ① **引擎脚本的工作目录**：安装器改成"装好后从 `<目标>\installer\` 跑脚本"之后，`deploy.cmd` 也跟着被从目标目录调用——
+  而它认的"包根"就是自己的上一层，于是把**目标当成了包**，判"自己拷自己"rc 6，**第二次安装（更新）静默不装**。
+  修法：`deploy.cmd` / `env.cmd` 恒定从包目录跑（它们的包根是自身上一层），其余引擎跟目标目录走。
+  ② **依赖自足性判据把被测目录自己算进祖先链**：`NearestAncestorNodeModules` 从 `api\` 本身起步，
+  于是每个健康的 `api\node_modules` 都让自己判红（"这条通过不足以证明自足"）。修法：从**上一层**起步。
+  ③ **端口三态判反 + 把安装器自己算成"预置二进制"**：`bind 成功` 被当成"被占用"，
+  而现编的 `BianwangInstaller.exe` 就躺在包内被自己的扫描判 Warn。修法：`PortBusy` 这个名字说清楚方向，
+  扫描时排除当前 exe。三者共同点：**检查的措辞和检查的判据不是一回事**，
+  每条 PASS 都要能指出"它红过一次吗、在什么条件下红"——本轮的三条都是靠"在真包上跑一遍看结论对不对"抓的，不是靠读代码。
+
+- **A-18 出包压缩到一半被打断，会留下一个"看起来还在"的 0 字节包**：`Compress-Archive -Force` 是**先把目标文件截成 0 再写**的，
+  所以中途取消 = 上一版可用的 zip 已经没了，而 `ls -l` 只告诉你文件在。判包可用不能只看它在不在，
+  要 `unzip -t`（损坏包报 `End-of-central-directory signature not found`）＋`wc -c`＋`sha256sum` 三件一起看，
+  再把包内五份文档 `unzip -p` 出来跟仓库 `diff`（本轮就是这么确认"包里的 docs 与仓库一致"的）。
+  重跑 `node scripts/make-nginx-package.mjs --write --zip` 是安全的：它只写 `outputs/package/`，收尾的"工作区状态复位"是 `pnpm install`，不碰 git。
+
+- **A-19 .NET 4.x 的探针会把一个健康的 HTTPS 站点判成"无应答"**（给安装器加协议感知时撞到）：
+  `HttpWebRequest` 在 .NET Framework 4.x 上默认协议表里**没有 TLS 1.2**（只有 SSL3/TLS1.0），而 Node 20+ 只接受 TLS 1.2 以上；
+  再加上自签证书过不了默认校验，两条叠加的结果是"站点 200 得好好的，探针拿到的却是握手失败"，
+  而这条检查的措辞是"实访确认站点可达"——**它红的时候没人会怀疑检查自己**。
+  修法两条一起给：显式 `ServicePointManager.SecurityProtocol = Tls12|Tls11|Tls`（写数值 `(SecurityProtocolType)3072` 而不是枚举名，
+  这样只装了 4.0 的机器也编得过、跑得动），以及 `ServerCertificateValidationCallback` **只对 `127.0.0.1` / `::1` / `localhost` 放行**——
+  公网地址上的证书问题仍然报红。判据要留在本机：这台机器上"证书是否公网可信"不是安装器能负责的事，
+  但"回环上有没有站应答"是它可以确证的。
+  教训：**加一种协议，就要顺带检查所有做网络判定的老代码是不是只认那一种**。
+
+- **A-20 node 子进程的中文日志进 GUI 就变繁体乱码，是同一族乱码问题的第 5 个根因**（截图复核协议面板时抓到）：
+  node 把 stdout 重定向到管道时按 **UTF-8** 写，而 `ProcessStartInfo` 不设 `StandardOutputEncoding` 时，
+  .NET 用**本机 OEM 码页**（简体中文＝936）去解——于是"辨妄阁 API 已启动"变成"鑶版暚噬…"。
+  这一条与前四条（csc 猜编码 / 字族写死 / `✓✗` 缺字形 / `.cmd` 里写中文）互相独立，
+  本机截图正常**不代表**换机正常，也不代表同机上另一条路径没坏：这条只在"起站之后看后端输出"时才现形，
+  而之前几轮的截图复核都停在协议面板以上，所以它一路活到了今天。
+  修法是 `psi.StandardOutputEncoding = psi.StandardErrorEncoding = new UTF8Encoding(false)`，
+  但**不能照抄到另一条子进程路径上**：`RunStep` 走的是 `cmd.exe /c pnpm …`，那边输出是 OEM 码页，
+  统一设成 UTF-8 会把 pnpm 的中文进度反过来弄坏。教训：**编码声明属于"每一条进程边界"，不属于"这个程序"**——
+  有几条边界就要各自判几次，而 GUI 里"看着没事"的那半屏不能替你证明另外半屏。
+
+- **A-21 一条为"运行态"写的过滤规则，把唯一的交付物从校验清单里抹掉了**（出含 exe 的包时撞到）：
+  `walk()` 按 `FORBIDDEN_PATTERNS` 跳过 `.exe`——这条规则是为"本机别把现编产物混进包"写的，完全正确；
+  但 `--with-exe` 形态里那个 exe 是**制品**不是运行态，于是 `SHA256SUMS.txt` 唯独漏了它，
+  `sha256sum -c` 恰好验不到唯一需要验的东西，而包看起来完整无缺。发现方式是安装器自检里那句
+  "预置安装器与随包摘要一致"——它去 `SHA256SUMS.txt` 找那一行时拿到空值，判据当场露馅（F-18 同族：
+  **检查通过的原因必须是真的比对过**）。修法：`--with-exe` 时把这个相对路径显式并回清单，并让自检同时比对
+  `EXE-SHA256.txt` 与 `SHA256SUMS.txt` 两处摘要与实际文件。教训：一条按"文件名类别"写的黑名单，
+  在引入"同名但是另一回事"的第二种形态时必须重新分档，不能靠加 `if` 打补丁。
+
+- **A-22 命令行是分次敲的，落点不记住就会"装在 A、自启在 B"**（同一轮实跑抓到）：
+  `--install --target D:\Sites\bw` 成功之后，再敲 `--autostart logon`（不带 `--target`）会退回默认值 `C:\Bianwang`，
+  于是登录自启指向一个**根本没装过东西**的目录，报的是"仪表盘 exe 不存在"（rc 6）——
+  症状像安装坏了，实际是两次调用没有共同记忆。修法与 `port.txt` 同构：安装成功后把落点写进
+  `installer\target.txt`，取值顺序 **命令行 > target.txt > 默认**，并在安装日志里明写"落点已记在……"。
+  教训：**同一套动词构成一个流程时，前一步的输入要有默认继承**；GUI 里这些值都在同一个窗口上，
+  所以只有脚本出口会暴露这个缺口——这也是为什么 `--cli` 那条路必须自己跑一遍，不能只测界面。
+
+- **A-23 系统自带的 `csc.exe` 不产出逐字节可复现的映像：同一份源码两次编出不同摘要**（重出含 exe 的包时撞到）：
+  `Installer.cs` 一个字节没改（文件时间仍是 03:17:30），03:19 那次出包的 exe 是 `f7b5101f…`，
+  03:35 再编得到 `fb5942bb…`。为了不把"大概是 MVID 随机"当结论，直接做一次对照实验：
+  同一个 `Installer.cs`、同一支编译器（`Framework64\v4.0.30319\csc.exe`，FileVersion `4.8.9221.0`）、同一条命令行编两次——
+  **体积一样（53,248 字节）、sha256 不同（`3584cfd4…` vs `195d5e54…`）、`ManifestModule.ModuleVersionId` 也不同**；
+  而这支 csc **不认 `/deterministic`**（`fatal error CS2007: 无法识别的选项"/deterministic+"`），没有开关可掰。
+  危险的地方在于**这条差异完全可以被误读成"包被替换过"**：文档里记着上一个数字，接收方拿新包一比就"对不上"。
+  所以摘要的比对口径被明确成**包内三处自证**（文件本体 / `installer\EXE-SHA256.txt` / `SHA256SUMS.txt`），
+  文档里的摘要一律写成"本轮重出的包为 …，上一轮同源码编出的那份是 …"，不写成单一基准。
+  教训：**"可核对的摘要"不等于"可复现的构建"**——现编交付的形态下能做的只有把摘要绑定在**它所属的那个包**上，
+  以及把"重编一次数字就变"这件事先写给接收方，否则第一次正常更新就会被当成篡改。
+
+- **A-24 解压到 `%TEMP%` 的未签名 exe 被执行拦截并从磁盘上消失**（复验最终包时撞到，且**推翻了上一轮文档里"解压出来的这份可直接执行"那句话**）：
+  `Expand-Archive` 解出来后 `Get-Item`/`Get-FileHash` 都正常（53,248 字节、`d4a1e61c…`、与 `EXE-SHA256.txt` 和 `SHA256SUMS.txt` 三方一致），
+  但 `& $exe '--ping'` **一次都没有返回**，脚本后面的输出全空；再回看目录，exe 不见了，同目录其余文件都在，目录 mtime 正是那次执行的时刻。
+  两次独立解压（`bw-exefinal-r7k2`、`bw-vanish-r7k2`）结果相同。对照三组事实把范围收窄到"**临时目录里执行**"这一条：
+  ① 同样字节的这份在仓库树里（`installer\`、`outputs\package\…\installer\`）一直存在，`--ping` 与 `--selfcheck --report` 都 rc 0；
+  ② Windows Defender 无查杀记录且其 Operational 日志为空（`Get-MpThreatDetection` 全空），注册的中心里 Defender 已是被动；
+  ③ 本机跑着 `360Safe` / `360tray` / `ZhuDongFangYu`（360 安全卫士的主动防御）。
+  **没有拿到的证据**：360 的隔离区日志我没有权限读，所以"命中哪一条规则"只能标注为推断，不写成结论（R-17 也照这个口径写）。
+  教训：交付一个未签名 exe，"能跑"这句话**必须带环境限定**——上一轮我在本机 `%TEMP%` 下跑通过九步，本轮同一台机器同一份源码就不给跑，
+  差别只在杀软的云端信誉变了。所以文档改写成"解压到常规目录再双击；被拦先核摘要再从杀软恢复；要零风险就用零 exe 形态"，
+  并且把**默认交付形态继续保持为零 exe**（`bianwang-<版本>-nginx.zip`），含 exe 的包是给用户"目标机不想起编译"时的备选。
+
+- **A-25 交付的 zip 只在 Windows 上解得开：条目名带 `\`，而且三本演示册的文件名是非 ASCII**（复验含 exe 的包时顺手量的）：
+  `Compress-Archive`（PowerShell 5.1）写出的 2463 条条目**全部用 `\` 分隔、0 条用 `/`**，而 ZIP 规范（APPNOTE 4.4.17）要求 `/`；
+  Info-ZIP `unzip` 不认 `\` 是分隔符，于是 Linux 上解出来是**一堆"文件名里带反斜杠"的平面文件**，目录树根本没建起来——
+  而 DEPLOY §二 的 Linux 路线就写着"用这个包"。第二条更隐蔽：包内条目名里只要有非 ASCII 字符，
+  .NET Framework 会按**机器 ANSI 码页（本机 cp936）**写名字且**不置 UTF-8 标志位**（`ZipFile.Open` 在 PowerShell 5.1 那一版**没有** `entryNameEncoding` 重载，实测报 `MethodCountCouldNotFindBest`，掰不动），
+  Explorer 按 cp936 解正好，Linux `unzip` 按 CP437 解就是乱码——受影响的正是三本自产演示册（`api/data/library/辨妄阁*.epub|pdf`），
+  而镜像站是**按文件名找实体**的，解错名＝登记在案的书一律取不到。
+  修法两条：**`scripts/make-zip.ps1` 代之以 .NET `ZipArchive` 逐条 `CreateEntry`，名字里的 `\` 一律换 `/`**；
+  **演示文件名改成 ASCII**（`bianwang-demo-{placeholder,reader,pdf}.epub|pdf`），**标题仍是中文**（界面、`library.json` 的 `title`、两条自检都按 title 匹配，实测 api-smoke 48/48、full-sweep 219/219 复跑不变）。
+  闸门加在压缩步末尾：**读回中央目录，`\` 条数与非 ASCII 条数都必须为 0，否则拒绝交付**。
+  验证方式就是最朴素的一条：`unzip` 解到仓库树外 → `sha256sum -c SHA256SUMS.txt` → **123 条全 OK、2449 个文件齐**。
+  教训：**"包能在本机双击"不等于"包是Portable"**——zip 的条目名是一种跨平台协议字段，用系统默认编码去写它，等于把交付物绑死在生它的那台机器上。
+
+- **A-26 校验清单里一行"不是文件的行"，让 `sha256sum -c` 把整包判成失败**（同轮回环校验撞到）：
+  `api/node_modules` 有 2300+ 个文件，逐条列会让清单失去可读性，所以原先写成一行聚合值
+  `a239fcad…  api/node_modules〔聚合：2324 个文件 / 79.0 MB…〕`——这行**符合 `<hash>  <路径>` 的格式**，
+  于是 `sha256sum -c` 认真去找这个"路径"，报 `FAILED open or read` 并让整个命令**退出码 1**。
+  接收方看到的交付物校验结果是"有一件对不上"，而真实情况是"这一件本来就不是文件"。
+  修法：把聚合值改成 `# 注释行`（GNU `sha256sum -c` 静默跳过注释行），算法与比对办法挪进 `MANIFEST.md`。
+  教训：**给人照做的清单，其"退出码"也是交付物的一部分**——一条格式合法的占位行，比少一条信息糟糕得多（F-18 同族：检查通过/失败的原因必须与它声称的语义一致）。
+
+- **A-27 Electron 的版本号在这条链上是承重的，不是口味**（离线包可行性硬测）：
+  后端 `package.json` 的 `engines` 要求 Node ≥ 20.19.0（`express-rate-limit` 一类的下限），而 Electron 内建的 Node 是随版本走的：
+  33.4.11 内建 **20.18.3**（差一个补丁版本就**过不了闸**），44.5.1 内建 **24.21.0**（过）。
+  所以"随便挑一个稳定版 Electron"会做出一个装完起不来的离线包，而且失败点在最不像会失败的地方（版本比较）。
+  修法：44.5.1 连同 `bytes`/`sha256` 一起写进 `scripts/make-offline-package.mjs` 的 `ASSETS`，取用前逐字核对；
+  `installer\runtime.cmd` 与 `installer-app\core.cjs` 两侧都按同一条 20.19.0 下限判，**低于下限就拒绝起站**而不是硬跑。
+  教训：**换运行时等于换依赖**——版本号要当契约钉死，钉在脚本常量里而不是"本机装的是啥就算啥"。
+
+- **A-28 Node 的 `spawn` 在 Windows 上会把参数再转义一遍，`cmd /c` 因此认不出我们的脚本路径**（安装器第一次真调 `env.cmd` 就中）：
+  `spawn('cmd.exe', ['/d','/s','/c','""C:\\...\\env.cmd"'])` 里那个 argv 元素被 Node 自动加引号并转义内部 `"`，
+  cmd 实际收到的是 `'\"\"C:\\...env.cmd\"'` —— 报"不是内部或外部命令"，**退出码 1，还带一行 OEM 码页的乱码**。
+  同一份命令行在 C# 的 `ProcessStartInfo.Arguments`（逐字拼接）下是好的，所以这条坑只在"把 C# 翻成 Node"时才会踩。
+  修法：`windowsVerbatimArguments: true`，命令行由我们自己逐字给（`""路径" 参数"`，与 C# 版完全一致）；
+  顺带删掉原先想加的 `chcp 65001>nul & ` 前缀——实测它会让 cmd 在路径的空格处截断（`rc=1`），
+  而 UTF-8 解码根本不需要它：node 输出本来就是 UTF-8，解码权在我们手里，只有 cmd 自己的中文报错行需要退路（按行检测替换符，命中就整行改按 GBK 重解）。
+  教训：**跨语言重写"起进程"这段代码，转义规则就是另一种语言**；判"能跑"要拿带空格的路径跑，不带空格的路径证不了这件事。
+
+- **A-29 NSIS 一处脚本要过四道独立小关，任何一道都只报一半线索**（第一次编 `offline.nsi`）：
+  ① 脚本含中文注释却没有 BOM → `Bad text encoding: offline.nsi:2`，报的行号是第二行而不是编码本身；
+  ② LogicLib 没有 `!~`（模式匹配）→ `Error in macro _If on macroline 9`，指向的是 `${If}` 内部而不是我写的那行；
+  ③ `makensis.exe` 放在包根 `windows\` 时按"上一层"找自己的家 → `Error: reading stub "...\nsis-bundle\Stubs\zlib-x86-unicode"`，
+  把它放进 `windows\Bin\` 才对（这个 bundle 的目录布局与官方 zip 不同）；
+  ④ `OutFile` 是相对 **`.nsi` 所在目录**解析的，不是 cwd → 编译退出 0、`-V2` 一声不响，产物却落在 `installer\` 里，
+  出包脚本在 `outputs\package` 左等右等。修法：脚本存成 UTF-8 with BOM、`${If} $EXEPATH != "$TEMP\bw-uninstall-offline.exe"`、
+  `Bin\makensis.exe`、以及**编完按 `installer\<name>.exe` 找产物再搬到位**。
+  教训：`退出码 0 + 没有产物` 是"检查通过的原因与它声称的语义不一致"的又一例（F-18 同族）——**出包脚本必须回查文件存在**，
+  这条在 `make-offline-package.mjs` 里现在是一道显式失败。
+
+- **A-30 Git-for-Windows 的 `tar` 排在 PATH 前面，把 `C:\...` 当成"远程主机上的路径"**（解 Electron zip 时）：
+  `tar -xf C:\...\electron.zip` → `tar: Cannot connect to C: resolve failed`（GNU tar 的 `host:path` 远程拷贝语法优先于 Windows 盘符）。
+  修法：出包脚本点名 `process.env.SystemRoot\System32\tar.exe`（Windows 自带的 bsdtar，认盘符也认 zip/tar.gz），
+  并且**找不到它就报错退出**而不是退回"随便一个 tar"。
+  教训：本机 PATH 上有两个同名工具时，"能跑"取决于谁在前面——和 A-28 里 `find`/`findstr` 那次是同一类事故。
+
+- **A-31 换交付形态时，"随包生成的说明文件"是最容易漏掉的一处——它会把运维指向一个这台机器上根本不存在的东西**（离线包第一次出完之后回读才发现）：
+  `make-offline-package.mjs` 第 1 步复用 `make-nginx-package.mjs --write`，于是**站点树那份 `README-FIRST.md` 与 `MANIFEST.md` 被原样抄进离线包**，
+  里面写的是"双击 `installer\setup.cmd`，它用系统自带的 `csc.exe` 现编出安装器再打开界面（本包不预置任何 exe）"——
+  这句在旧形态里是真的，在离线包里三个词全是假的（不现编、不碰 csc、包里全是 exe），
+  而且 `MANIFEST.md` 连 `runtime/` 这一行都没有、还让人以为 `SHA256SUMS.txt` 覆盖整棵树（它只覆盖站点那半）。
+  闸门拦不住这类问题：**它校验的是字节与清单，不是文字和形态对不对得上**。
+  修法：出包脚本多一步 `rewriteDocs()`，改掉 `README-FIRST.md` 那段"Windows 一键安装"、给 `MANIFEST.md` 加 `runtime/` 行并写明两半各由哪个摘要自证；
+  并且**找不到那段旧文本就退出**（`✗ README-FIRST.md 里找不到…站点脚本改格式了？先看一眼再出包`）——
+  这段改写靠的是文首标记，静默失配就等于下一次出包又发一份假说明回去。摘要因此与上一轮不同（171.1 MB 那件重出过一次），再次印证 A-23：**别跨轮比数字**。
+  教训：换形态要连"生成的说明"一起换。代码里的注释我逐条过了一遍，漏的偏偏是**只有出包才落盘、平时没人再看**的那两份。
+
+- **A-32 把"本轮产物的 sha256"写进随包文档＝制造一个自指的假陈述**（本轮连着撞了两次）：
+  `docs/DEVELOPMENT.md` 是打进离线包里的，所以文档里那句"最终产物 sha256 = `ae04ab71…`"会被这次出包**改掉**——写完摘要、重出，摘要就变了，
+  于是文档里那串永远在说**上一件**。更绕的是它还会骗人：第二、第三件都"看起来是最新的"，因为改动全在文档自己里，闸门一条也不会红。
+  修法（已落进 §4.14 那张表）：文档里只写**体积量级**与"本轮出过几件、每件差在哪"，摘要指向**当轮**的 `SHA256SUMS-offline.txt` 与 Release 说明；
+  并把**出包放在一轮的最后一步**（本轮顺序是：文档与引擎改完 → 三套自检串行复跑 → `verify-deploy` → 才出包）。
+  与 A-23（`csc.exe` 无 `/deterministic`，摘要每轮必变）是同一条纪律的两个方向：**不能跨轮比数字，也不能让轮内的数字自指**。
+
+- **A-33 `SHA256SUMS-offline.txt` 用 CRLF 写，正好把文档里教的那条核对命令弄坏**（本轮收尾时真撞上一次，是 A-26 的同族）：
+  出包脚本写这份摘要文件用的是 `${hash}  ${NAME}.exe\r\n`，而 `rewriteDocs()` 给包内 `MANIFEST.md` 加的核对指引明写着
+  `sha256sum -c SHA256SUMS-offline.txt   # 有 coreutils 时`。`sha256` 把行尾的 `\r` 当成**文件名的一部分**，实测报
+  `sha256sum: 'bianwang-1.1.0-offline-win.exe\r': No such file or directory` → `FAILED open or read` → **退出码 1**，
+  而这正是回环验收用来判"包没被换过"的那一步（`certutil -hashfile` 不受影响，所以只有 Linux/WSL/coreutils 这条路是坏的）。
+  修法：写盘改 LF，并且**写完立刻读回来断言**（有 `\r` 就退出、格式不是"<64 位十六进制>两空格<名>.exe\n"也退出），
+  让它和站点那半的 `SHA256SUMS.txt`（本来就是 `lines.join('\n')`，124 条 `-c` 全 OK）用同一套口径。
+  教训：**给运维写的核对命令，要连核对文件自己的格式一起验**；一份"看起来内容正确"的校验值清单，行尾错了就等于该分支上永远是红的（同 F-15：判红之前先问"这一步到底是谁在解析它"）。
 
 ### B · Vue 与前端
 
@@ -810,6 +1195,19 @@ winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略
   修法：阈值改为可配 `BW_WRITE_LIMIT_PER_MIN`（**产品默认仍是 40，没有偷偷放宽**），自检实例给 300；
   同时补一条"**限流按配置真的会挡住**"的正向断言（用 `BW_WRITE_LIMIT_PER_MIN=2` 起一个实例打第三发），
   防止后人把配置项读成"关掉限流"。教训同 F-1：调控件不能只测"放宽后能用"，要测"设小了她真的挡"。
+- **E-10 `upgrade-insecure-requests` 与 HSTS 按 `NODE_ENV` 下发，会把"生产 + 无证书 + 内网明文 HTTP"这一档整站打死**（本轮全自动验证抓到，与 R-16 同族）：
+  `securityHeaders()` 里这两个头当时只看 `config.isProd`，而本项目当前的生产实况恰恰是**明文 HTTP**（用户指定：暂无证书，默认必须 HTTP 起站）。
+  `upgrade-insecure-requests` 不是"提醒"，是**改写请求**：浏览器把页面里每一个 `http://` 子资源与接口请求换成 `https://`，
+  而起站机上没有 TLS 监听。实测（`NODE_ENV=production`、绑 `192.168.10.11:8791`、headless Chrome 真访问）：
+  7 个请求里 **6 个被改写成 `https://192.168.10.11:8791/…`**，全部 `net::ERR_SSL_PROTOCOL_ERROR`，`/api/` 一条都没发出去，页面只剩空白；
+  修完后同一台同一地址：**16 个请求、5 条 `/api/` 调用、被改写成 https 的 0 个、失败 0 个**，标题正常渲染成"卷首 · 档案瀑布"。
+  出包之后又对**交付的那棵树**复测了一遍（`runtime\BianwangRuntime.exe` + `ELECTRON_RUN_AS_NODE` 起 `api/src/index.js`，绑 `192.168.10.11:8792`、`NODE_ENV=production`）：
+  浏览器同样 16 请求 / 0 改写 / 0 失败，带 `x-forwarded-proto: https` 时两档头都回来，`ops/verify-deploy.mjs` 只读 **26 项 0 失败**、`--mutate` 含写 **36 项 0 失败**
+  （写链路要在**内网明文 IP** 上登录成功才算数——这正是 R-16 与 E-10 交汇的那条路，Secure 判错就会"口令对却登不进去"）。
+  修法与会话 cookie 的 `Secure` 用同一条判据：只看**这一条请求是不是真走 TLS 进来的**（`req.secure`；`trust proxy` 已开，
+  Nginx 侧 `nginx/bianwang-proxy.inc` 已 `proxy_set_header X-Forwarded-Proto $scheme`），TLS 一上就自动补回，不需要新开关。
+  这也让后端与 `nginx/bianwang-http.conf` 的既有口径对齐——那份配置早就写着"**HTTP 版故意不发 HSTS**"（DEPLOY §一 B），只有 Express 这一层没跟上。
+  教训：**协议相关的头不能按"环境名"发**；HSTS 发出去很难撤回，UIR 发错则当场不可用，两者都该由真实协议决定。
 
 ### F · 验证脚本自身（最阴险：绿灯 ≠ 覆盖）
 
@@ -891,6 +1289,22 @@ winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略
   "进程打印启动横幅 + `GET /api/menu` 返回 200 + 条目数 > 0"三条，不看"没报错"。
   教训：**验证环境必须比目标环境更苛刻，或者至少证明自己不更宽容**；
   任何"换了个目录"的隔离性都要由脚本自己核实，不能由我的记忆保证（同 F-13：PASS 要因真实原因通过）。
+- **F-19 走查脚本悄悄依赖一个手工摆进去的夹具，一次目录清理就把三项断言判红**：
+  插图上传那三项读的是 `.scratch-verify/sample-chart.png`，但**脚本里没有任何一行创建它**——文件是更早某轮我手工放进去的。
+  按你的指示删掉 `.scratch-*`（含截图）之后，`DOM.setFileInputFiles` 指向一个不存在的路径，
+  于是报的是"编辑器插图上传后进入正文并带媒体号 — mid=（空）"这类**看起来像功能坏了**的失败。
+  修法：`walkthrough.mjs` 加 `writePngFixture()`，每轮现场生成（PNG 魔数 8 字节 + IHDR/IDAT/IEND，CRC 自己算，163 字节），
+  路径与体量写进断言 detail（`mid=… 夹具=163B`），夹具位置可用 `FIXTURE=` 覆盖；复跑 **165/165**。
+  教训同 F-18：**验证的前提要由验证自己建立**，凡"我先手动准备一下"的 step 都是下一轮的定时炸弹；
+  同理夹具要落在被测系统真正认的那条判据上（这里就是 `sniffImageType()` 的魔数与 `maxImageBytes`），不是"随便一张图"。
+- **F-20 一条测错东西的断言可以绿很久：`生产模式带 HSTS 与 nosniff`**（E-10 的另一半）：
+  全量体检里这条 PASS 了若干轮，而它 PASS 恰恰证明被测系统是坏的（明文 HTTP 生产档发出了 HSTS + UIR）。
+  更隐蔽的是**本机看不见**：Chrome 把 `127.0.0.1` 与 `localhost` 当"可信来源"，不对它们执行升级，
+  所以历次走查与验收（全部走回环）永远不会白屏——只有换成内网 IP 才现形，这就是 E-10 直到本轮才被实测的原因。
+  修法：把那一条拆成**成对断言**——明文 HTTP 的生产档 `strict-transport-security` 必须为空且 CSP 里不含 `upgrade-insecure-requests`；
+  同一实例带 `x-forwarded-proto: https` 时两者必须都回来（与 cookie 的 `Secure` 那两条同构，`full-sweep` 由 219 → **221** 项）。
+  教训：**判据本身要对着需求复核**，"绿灯"不是"行为正确"的证据；涉及协议/来源的断言，必须同时测**回环之外**的地址或至少伪造转发头，
+  否则测的是浏览器的豁免规则，不是我的代码。
 
 ---
 
@@ -909,7 +1323,11 @@ winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略
 | R-7 | **PDF 阅览只走文字层** | `pdfRead.js` 取 `getTextContent()` + `getOutline()`，服务端**不渲染像素** | 扫描件（无文字层）在阅览页是空的；版面/字体/图位不复现 | 页面明示"仅取文字层，版式请下载原文件核对"；无书签的 PDF 退化全本一次给出；未入白名单的书根本进不来 | 需要版面复现或读扫描件时**另起方案**（客户端渲染或受控光栅化），先做 CPU 与许可评估 |
 | R-13 | **版本台账会吃磁盘** | 每次修订存**完整快照**，每档保留 `BW_REVISION_KEEP`（默认 30）版 | 档案多、修订频繁时 `revisions.json` 体积线性上涨；快照里含正文与批注 | 保留数可配、清单接口不返回快照正文、比对按需拉两版 | 上线后定期看 `/ops` 的台账体积；真要长期留档应导出到备份，而不是靠保留数调大 |
 | R-14 | **删档不抹历史，但也不补记** | 撤档时不新增版本，已存快照原样留着 | 台账里会出现"档案已不在、历史仍在"的行（页面已明写提示） | 这是**审计取向**的刻意设计；要连历史一起清就得手工动 `revisions.json` | 涉及"依法删除"类请求时，须同时处理 `revisions.json` 与 `security.log`，只删档案不够 |
-| R-15 | **开机自启的 SYSTEM 任务在本机建不出来**（提权也不行） | 已提权实跑：`net session` 通过、端口已记录，`schtasks /create /sc onstart /ru SYSTEM /rl highest` 仍返回**拒绝访问**（本机 Windows 11 专业版，ProductType 1）。脚本已改成**失败降级**：仍注册 ONLOGON 任务 + 直接拉起站点 + 探端口确认，最后 rc 4 并写明"重启后不会自愈"。降级路径实跑通过（rc 4 · `[ok] site is up` · `/api/menu` 200 · `口令.txt` 落站点根） | 在这类机器上装完看着成功，重启后站点不在；ONSTART 那一半始终没被正面验证过 | `autostart.cmd` 打印拒绝原因与三条出路；`installer\run-site.log` 留 node 原话；`/status` 非提权可查；`schtasks /run` 不重启即验 | 在**真正的 Windows 10 与 Server 2019**（服务器 SKU 允许任务取 SYSTEM）上各重启一次，确认登录前 `/api/menu` 就回 200，并确认 `node` 按**机器范围**安装（装在个人目录下 `SYSTEM` 找不到）。客户端机要自启请改走"登录即起"或 NSSM 之类服务包装器，**先做许可核实** |
+| R-15 | **开机自启的 SYSTEM 任务在本机建不出来**（提权也不行） | 已提权实跑：`net session` 通过、端口已记录，`schtasks /create /sc onstart /ru SYSTEM /rl highest` 仍返回**拒绝访问**（本机 Windows 11 专业版，ProductType 1）。脚本已改成**失败降级**：仍注册 ONLOGON 任务 + 直接拉起站点 + 探端口确认，最后 rc 4 并写明"重启后不会自愈"。降级路径实跑通过（rc 4 · `[ok] site is up` · `/api/menu` 200 · `口令.txt` 落站点根）。**同日补测**：`schtasks /create /sc onlogon` 在**非提权**下同样被拒，所以"登录后自动起"这一档**不走任务计划程序**，改由安装器写 `HKCU\...\Run`（A-15 补记）——界面第三段因此是三档可选（不起 / 登录后起 / 开机即起），被拒的"开机即起"自动降级为"登录后起"并写明还剩什么 | 在这类机器上装完看着成功，重启后站点不在；ONSTART 那一半始终没被正面验证过 | 界面第 3 段与 `--autostart none\|logon\|boot` 都能选；`autostart.cmd` 打印拒绝原因与三条出路；`installer\run-site.log` 留 node 原话；`/status` 非提权可查；`schtasks /run` 不重启即验；`logon` 档写 Run 键后**回读确认**才算成 | 在**真正的 Windows 10 与 Server 2019**（服务器 SKU 允许任务取 SYSTEM）上各重启一次，确认登录前 `/api/menu` 就回 200，并确认 `node` 按**机器范围**安装（装在个人目录下 `SYSTEM` 找不到）。客户端机要自启请选"登录后自动起"（免管理员）或 NSSM 之类服务包装器，**先做许可核实** |
+| R-16 | **站点当前以明文 HTTP 上线（生产暂无证书）** | 用户交代的前提就是"暂时没有 SSL 证书，只能用 HTTP 环境"，所以 HTTP 是**默认档**而不是待修缺陷：`resolveTls()` 没给证书就 `http.createServer`，`run-site.cmd` 不设 TLS 变量，界面默认选中 HTTP，`nginx/bianwang-http.conf` 让没有证书的机器也能装上 Nginx 就跑 | 口令、会话 cookie 与正文在内网链路上可被读到；`SameSite=Strict` 与反爬指纹挡不了同网段抓包。把 80/8787 映射到公网＝把馆员账号交出去 | 后端与安装器在协议判错时**宁可拒绝启动也不降级**（A-19/D-17）；界面与 `口令.txt` 都写明本次是明文；`DEPLOY.md` §六 有"迁到 HTTPS"的三条路；会话 cookie 的 `Secure` 按请求真实协议判，HTTP 部署不会被自己的属性打死（A-20 同族）；**HSTS 与 CSP 的 `upgrade-insecure-requests` 同一条判据**（本轮修的，E-10：按 `NODE_ENV` 发会让浏览器把明文站点的每个请求改写成 https，内网直连时整站白屏） | 拿到证书后：`BW_TLS_PFX`（或 `BW_TLS_KEY`+`BW_TLS_CERT`）重启后端，或在 Nginx 侧换回 `bianwang.conf`（含 80→443 与 HSTS）；届时再评估是否要强制跳转。**HSTS 一旦发布很难撤回**，所以 HTTP 版故意不发（后端与 Nginx 两处同口径） |
+| R-17 | **交付物里有未签名的二进制在流通**（现形态＝离线包里的 `runtime\BianwangRuntime.exe` 与 NSIS 卸载器；旧形态 `--with-exe` 那份 `BianwangInstaller.exe` 已随 D-19 下线） | 没有代码签名证书，SmartScreen / 杀软可能拦。**本机实测撞到过一次处置**（当时还是 `--with-exe` 那份 exe，现象与包体无关，所以结论照样适用于现在）：`Expand-Archive` 解压到 `%TEMP%` 后那份 exe 立刻可读、可取摘要（包内三处一致 `d4a1e61c…`），但**第一次执行不返回，随后文件从磁盘上消失**；同样字节的这份放在仓库树里（`installer\`、`outputs\package\…\installer\`）一直存在，`--ping` 与 `--selfcheck --report` 都正常。本机注册的防病毒是 **360 安全卫士**（`360Safe` / `360tray` / `ZhuDongFangYu` 在跑，Windows Defender 已转被动且无查杀记录），所以处置来自第三方杀软的主动防御；**命中哪条规则没拿到一手证据**（360 的隔离日志无权限读），能给的只有上述对照 | 用户可能因为一次告警就以为包坏了；更坏的情形是包被替换后没人能靠签名发现 | 出包侧：`.exe` 走**白名单逐件核对**（站点树那半零 exe，离线包只允许 `runtime\` 那一套 Electron；冒出来路不明的就拒绝出包），外部二进制**按 sha256＋字节数取用**、缓存放仓库外。核对侧：Release 说明那一行摘要 + 包内 `SHA256SUMS.txt`（站点那半逐文件）+ `SHA256SUMS-offline.txt`（外层 exe），README/USAGE 都给 `certutil -hashfile` 的用法。被处置时的三条出路（写进 USAGE §10 与 DEPLOY §六）：**解到常规目录再双击**（别在 `%TEMP%`／浏览器下载的临时目录里点）、**核对摘要后**从杀软恢复并加信任、或走 `installer\setup.cmd /cli`（纯批处理，不开窗口；但它仍要用随包运行时当 Node，那也是个 exe——真被拦就删 `runtime\` 换系统 Node ≥ 20.19.0） | 要面向外部用户分发就得买代码签名证书（OV/EV）——**属花钱的第三方服务，先与用户确认再动**；Electron 那套二进制的签名还要额外过一遍（`signtool` 逐个签），不是签外层 exe 就完事 |
+| R-18 | **交付物从 26 MB 涨到 171 MB**（离线包，D-19） | Electron 运行时解包 368 MB，zlib 压完 171 MB；这是"装机机什么都不用装"的价格 | 内网分发/低带宽机器上下载慢；U 盘与离线介质反而合适 | 站点树 zip（26 MB）仍在生产线上，Linux/Nginx 路线或"机器上本来就有 Node"的人可以用它；`SetCompressor` 固定 zlib（LZMA 能小三成但模块是 CPL-1.0，见 THIRD_PARTY §1.2） | 若要压到更小：先取得用户对 CPL-1.0 的单独批准再换 LZMA，**不要**顺手换 |
+| R-19 | **Electron 44 与安装器界面只在 Windows 11 上跑过** | 官方支持面只写 "Windows 10 and up"；Win10 与 Server 2019 本机没有实机可验，Server Core 更是根本没有图形子系统 | 目标环境恰好是用户点名的那两个，"未验"不能当"已支持" | `offline.nsi` 里 `${AtLeastWin10}` + `${RunningX64}` 先挡掉明确不支持的；Server Core 走 `setup.cmd /cli`（纯批处理，不碰 exe）；`installer-app` 的结论全部来自 `.cmd` 引擎与回查，界面只是呈现 | 上线前在**一台真 Win10 与一台真 Server 2019** 上各装一次：验 Electron 能起、`ONSTART`+`SYSTEM` 能注册、重启后协议沿用、杀软是否放行 |
 | R-8 | **JSON 存储的规模上限** | 原子写 + 常驻索引 + mtime 失效 | 档案上千本后单文件读写与索引重建变慢；并发写只有进程内序 | 单实例部署；写操作串行 | 接近上限时换库（README §三 的判据），**不要**用"重建索引"当性能手段 |
 | R-9 | **反爬是减速带，不是围墙** | UA 门槛、深翻页门槛、签名直链、限流 | 已解锁口令者仍可逐页取走镜像正文 | 口令可吊销、可限范围、可到期；审计留痕 | 对外发放用**独立口令 + 指定书目范围 + 到期日**，不要发 `all` 长期口令 |
 | R-10 | **`BW_SECRET` 决定会话与所有签名** | 缺失时自动生成 `.secret`（0600） | 换密钥＝全部会话与直链作废；多实例不一致会随机 403 | 文档标注 | 多实例必须显式统一；备份该文件 |
@@ -925,7 +1343,7 @@ winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略
 | 脚本 | 层次 | 覆盖 | 本轮 |
 | --- | --- | --- | --- |
 | `scripts/api-smoke.mjs` | 打活着的后端 | 权限边界、置顶唯一、HTML 净化、限流、锁定、签名直链过期、魔数与尺寸、反爬 UA、菜单读写、**版本端点与馆务端点**（含全站版本台账总表：口径齐备、只回表头不回快照、按动作/按档案筛选、登出后 401）（菜单清单按注册表派生，见 F-12） | 48/48 |
-| `scripts/full-sweep.mjs` | **自起 7 个隔离实例**（core / shelves / prod / hash / lock / writelimit / keeplimit） | 建档到删档全链、媒体回收、资源库增删藏、镜像口令门控与吊销、EPUB 分页阅览边界、**PDF 阅览与预览白名单（12 + 19 项）**、**版本台账（保留数截断、比对、限流阈值 `BW_WRITE_LIMIT_PER_MIN` / `BW_REVISION_KEEP`）**、**全站版本台账总表（按档案筛选、记忆化按数据代次即时失效、`keep` 随实例配置、删档后 `alive=false` 仍在册）**、**媒体三方对账与点名清理**、**CSV 特殊字符往返**、出厂示例实体逐项在位、生产响应头与"接口不被单页兜底吞掉"、旧菜单文件自动补齐、scrypt 模式、登录锁定 | 218/218 |
+| `scripts/full-sweep.mjs` | **自起 7 个隔离实例**（core / shelves / prod / hash / lock / writelimit / keeplimit） | 建档到删档全链、媒体回收、资源库增删藏、镜像口令门控与吊销、EPUB 分页阅览边界、**PDF 阅览与预览白名单（12 + 19 项）**、**版本台账（保留数截断、比对、限流阈值 `BW_WRITE_LIMIT_PER_MIN` / `BW_REVISION_KEEP`）**、**全站版本台账总表（按档案筛选、记忆化按数据代次即时失效、`keep` 随实例配置、删档后 `alive=false` 仍在册）**、**媒体三方对账与点名清理**、**CSV 特殊字符往返**、出厂示例实体逐项在位、生产响应头与"接口不被单页兜底吞掉"、**会话 cookie 的 `Secure` 跟随真实协议（明文 HTTP 不带 / `x-forwarded-proto: https` 才带）**、**HSTS 与 `upgrade-insecure-requests` 同一对判据（E-10/F-20）**、旧菜单文件自动补齐、scrypt 模式、登录锁定 | 221/221 |
 | `scripts/walkthrough.mjs` | 真实浏览器（CDP） | 登录→建档（材料源出处链接随档渲染）→CKEditor 画圈/划线/变色/解除标注→插图→用印→对勘→重排→菜单→置顶→删除→**修订一次→版本台账两版/词级 ins-del/同版提示**→镜像口令→**在线阅览翻页/插图/跨章单页链接/全本/令牌收回**→**架上检索命中章节→直达该节**→**预览开关往返**→**PDF 分节/页眉措辞/文字层/无光栅化/全本**→**馆务台账（对账读数、预演不改盘、确认框可取消、日志按事件筛选）**→**版本台账总表（五分栏口径、两表渲染、行链跳版本清单、按动作筛选、清空筛选）**→页脚出处链接→**凡例「出厂示例」表**；窄屏溢出（含馆务台账、版本台账总表与逐档版本台账三张表）；桌面端外壳几何（批注栏标题横排、页眉铺满不缩进）；逐屏截图 | 165/165，控制台零输出、CSP 零违规 |
 | `scripts/pin-guard.mjs` | 静态检查（`prebuild` 里跑，构建前挡人） | 每条依赖声明必须**精确 pin**（无 `^`/`~`/范围符）、实装版本与声明一致、许可落在**宽松白名单**内（唯一例外 ckeditor5 的 GPL、以及 dompurify 的 MPL/Apache 双许可）、每个包都有"一句话用途"与可回指出处、同一包不得在两个工作区各装一份 | PASS（19 条声明 / 17 个运行时依赖） |
 
@@ -936,10 +1354,12 @@ winget 不存在（Server 2019 默认不带）或下载失败（代理/组策略
 
 | 脚本 | 作用 | 为什么这么设计 |
 | --- | --- | --- |
-| `scripts/make-nginx-package.mjs` | 打"解压即上 Nginx"的部署包（`web/dist/` + `api/` + `nginx/` + `ops/` + `docs/` + `dashboard/` + `installer/` + `MANIFEST.md` + `SHA256SUMS.txt`） | **默认预演**，`--write` 才落盘、`--zip` 才压缩。核心是安全边界：`data/.secret`（会话与全部签名的主密钥）、`sessions.json`（活会话）、`security.log*`（含来源 IP 的审计流水）、`login-attempts.json`（锁定计数）、`installer/port.txt` 与 `installer/run-site.log`（本机状态与含路径的运行日志）**一律挡在包外**并逐条打印（`.pnpm/node_modules/server` 那条自指软链按路径挡，它会把整个开发 `server/` 灌进包）。`api/` 每次**现做**（内部跑 `pnpm --filter server deploy --legacy --prod --config.node-linker=hoisted`），不留可复用的旧快照（A-6 的成因就是复用了修复前的 deploy 产物）；包内 `api/` 自己重跑一次 `reseed`，所以出厂态不是开发残局。`web/dist/` 含编译后的 CKEditor，因此随包带 `LICENSE-NOTE.txt` + `COPYING.GPL`。**出包末尾四道硬闸，任一红就不出包**：① 运行态扫描；② `api/node_modules` 软链接条数必须为 0（hoisted 平铺的证据）；③ **孤立自足性**——把 `api/` 拷进 `%TEMP%` 下祖先链无 `node_modules` 的位置（先自证这点）真起后端并要 `/api/menu` 返回 200 且有条目（A-11/F-18 加的）；④ **批处理合规**——包内每个 `.cmd`/`.bat` 必须 CRLF 且零高位字节（A-7/A-9 加的，`ops-extras/start-api.cmd` 曾带 34 个裸 LF 发布出去过） |
+| `scripts/make-nginx-package.mjs` | 打"解压即上 Nginx"的**站点树**（`web/dist/` + `api/` + `nginx/` + `ops/` + `docs/` + `dashboard/` + `installer/` + `MANIFEST.md` + `SHA256SUMS.txt`）。Linux / Nginx 路线直接用它；Windows 路线它是**离线包的输入**（下一行） | **默认预演**，`--write` 才落盘、`--zip` 才压缩。核心是安全边界：`data/.secret`（会话与全部签名的主密钥）、`sessions.json`（活会话）、`security.log*`（含来源 IP 的审计流水）、`login-attempts.json`（锁定计数）、`installer/port.txt` 与 `installer/run-site.log`（本机状态与含路径的运行日志）**一律挡在包外**并逐条打印（`.pnpm/node_modules/server` 那条自指软链按路径挡，它会把整个开发 `server/` 灌进包）。`api/` 每次**现做**（内部跑 `pnpm --filter server deploy --legacy --prod --config.node-linker=hoisted`），不留可复用的旧快照（A-6 的成因就是复用了修复前的 deploy 产物）；包内 `api/` 自己重跑一次 `reseed`，所以出厂态不是开发残局。`web/dist/` 含编译后的 CKEditor，因此随包带 `LICENSE-NOTE.txt` + `COPYING.GPL`。**出包末尾六道硬闸，任一红就不出包**：① 运行态扫描；② `api/node_modules` 软链接条数必须为 0（hoisted 平铺的证据）；③ **孤立自足性**——把 `api/` 拷进 `%TEMP%` 下祖先链无 `node_modules` 的位置（先自证这点）真起后端并要 `/api/menu` 返回 200 且有条目（A-11/F-18 加的）；④ **批处理合规**——包内每个 `.cmd`/`.bat` 必须 CRLF 且零高位字节（A-7/A-9 加的，`ops-extras/start-api.cmd` 曾带 34 个裸 LF 发布出去过）；⑤ **包内零 `.exe`**（D-15/A-6 立的；离线包那一层另有白名单口径，见下一行——站点这半永远不许带二进制）；⑥ **zip 条目名可移植**（A-25 加的）：压缩不用 `Compress-Archive`，改调 `scripts/make-zip.ps1`——.NET `ZipArchive` 逐条建条目、名字里的 `\` 一律换 `/`，压完**读回中央目录**，`\` 条数与非 ASCII 条数任一不为 0 就**拒绝交付**（非 ASCII 的根因是 .NET Framework 按机器码页写名字且不置 UTF-8 标志位，而 `ZipFile.Open` 在 PowerShell 5.1 上没有 `entryNameEncoding` 重载可掰；所以出厂演示册的**文件名**改成 ASCII，**标题**仍是中文） |
+| `scripts/make-offline-package.mjs` | 打**离线完整安装包**（单个自解压 exe ＝ 上面那棵站点树 + `runtime/` 随带运行时 + `runtime\resources\app` 图形安装器），`pnpm package:offline` | **第 1 步就是调上一条命令**（`--write`，不带 `--zip`），站点那半的六道闸一条不少、逻辑不复制。之后加**三道自己的闸**：⑦ **外部二进制按校验值取用**——Electron 官方运行包与 NSIS 工具包先比 sha256 **加字节数**，对不上就停（缓存放在仓库外 `%LOCALAPPDATA%\bianwang-offline-cache`，公开仓库里不留二进制；也不"顺手用本地那份"，A-6 的镜像教训）；⑧ **交付物内 `.exe` 白名单**——只允许 `runtime\` 那一套 Electron，别处冒出一个就拒绝出包（本轮实测：白名单内 1 个，`runtime/BianwangRuntime.exe`）；⑨ **依赖探针清单三处同源**——`installer\startup-imports.json` ↔ `installer-app\core.cjs` ↔ `dashboard\Dashboard.cs` 逐项比对，引号风格两种都认（闸门不该做成拼写检查）。另有两件不是"闸"但会挡人的：`makensis` **退出 0 还要找产物**（落在 `installer\` 而不是等它出现在 `outputs\`，A-29），以及产物字节数低于 50 MB 直接判"没含运行时，别发"。包内 `README-FIRST.md` / `MANIFEST.md` 会**改写成本包口径**（旧文本叫运维去找 `csc.exe` 现编一个这里根本不需要的安装器，属假说明） |
+| `scripts/check-package-parity.mjs` | **出完包回读**：逐件比对仓库与包内树的 sha256（33 件：后端四件 + 五份文档 + 九个 `.cmd` 引擎与两份随包件 + `installer-app` 九件 + `Dashboard.cs` + 三份 nginx + `verify-deploy`），任一不一致就退出 1 | 闸门校的是字节与清单，**校不出"包内这段文字还是上一轮形态的"**（A-31），也校不出改了 `server/` 却忘了重出包（本轮 E-10 同时落在两侧，就是靠这一步确认交付树带着修好的中间件）。不参与比对的是 `README-FIRST.md` 与 `MANIFEST.md` 两份——它们由 `rewriteDocs()` 按包形态改写，本来就该和仓库里那份不同 |
 | `ops-extras/verify-deploy.mjs` | 部署后验收（对**已上线的入口**跑，不碰仓库） | 默认只读；`--mutate` 才走"建档→修订→比对→置顶→删除"且自清。判定分三档：**FAIL**＝不通、**WARN**＝只在生产才要求（CSP）、**INFO**＝只有经 Nginx 才成立（`/assets/` 的 immutable），后两档不判红——否则会逼人把只读探针当故障单 |
 
-这两件都是被踩坑逼出来的（F-15：把 Nginx 的职责算到 Node 头上、在首页判只该给接口下发的 robots 头、
+这几件都是被踩坑逼出来的（F-15：把 Nginx 的职责算到 Node 头上、在首页判只该给接口下发的 robots 头、
 按"我以为的响应形状"写结构断言，三种都会造成永远红的假故障；F-16：审计是 120ms 缓冲落盘的，
 做完动作立刻读台账会读到空）。
 
@@ -951,15 +1371,18 @@ pnpm seed                        # 取确定基线（走查依赖固定次序，
 chrome --headless=new --remote-debugging-port=9223 about:blank   # 走查用
 BW_WRITE_LIMIT_PER_MIN=300 pnpm dev      # 或 pnpm start（8787，伺服 web/dist）；300 只为自检放行（E-9），产品默认仍是 40
 node scripts/api-smoke.mjs       # 48
-node scripts/full-sweep.mjs      # 218（自带隔离数据目录，跑完清理）
+node scripts/full-sweep.mjs      # 221（自带隔离数据目录，跑完清理）
 node scripts/walkthrough.mjs     # 165（每轮先 seed 取确定基线，改过的顺序/菜单/置顶会复位）
 pnpm audit:ui                    # Yan 契约审计
 pnpm build                       # 许可登记表再生 → 依赖守卫 → 分包
-node scripts/make-nginx-package.mjs --write --zip   # 出包：api/ 现做、包内重播、扫净后压缩
-# 解压回环（出包后必做，换到另一个目录、且路径以 . 开头）：
+node scripts/make-nginx-package.mjs --write --zip   # 站点树：api/ 现做、包内重播、六道闸后压缩
+node scripts/make-offline-package.mjs --write       # 离线包：调上面这一步（--write，不压缩）再铺 runtime + 三道闸 + NSIS 出单个 exe
+node scripts/check-package-parity.mjs               # 出完包回读：包内文本＝仓库文本（33 件逐字节，A-31/F-19 逼出来的一步）
+# 站点树 zip 的解压回环（走 Linux/Nginx 路线时必做；换到另一个目录、且路径以 . 开头）：
 #   Expand-Archive 到 .scratch-*/  →  cd .scratch-*/bianwang-<版本>-nginx/api && NODE_ENV=production node src/index.js
 #   node ops/verify-deploy.mjs http://127.0.0.1:<端口> --expect-prod              # 26 项只读
 #   node ops/verify-deploy.mjs http://127.0.0.1:<端口> --expect-prod --mutate --user admin --pass '出厂口令'  # 36 项含写链路
+# 离线包：双击 exe 会弹 UAC（本机不代跑），不实机的话就按 §4.14 那张表用**出包暂存树**驱动引擎与界面
 ```
 
 **判绿的标准**：除了"失败 0 项"，还要看 ① 构建日志 `grep -c ERROR` 为 0 且产物存在；
@@ -1025,6 +1448,14 @@ node scripts/make-nginx-package.mjs --write --zip   # 出包：api/ 现做、包
 | 22 Windows 一键安装包 | `installer/` 七个脚本 + 一个 `.ps1`：`setup.cmd` 串起 ①环境（`env.cmd`，Node≥20.19.0 逐段数字比、winget 装 LTS、缺 winget 或下载失败退回打开官方页）② 部署（`deploy.cmd`，robocopy 且 `/XD api\data`、目标机现编 exe、拒绝"拷到自己"）③ 自启（`autostart.cmd` 注册 `BianwangSite` ONSTART/SYSTEM + `BianwangDashboard` ONLOGON 两个载体，`run-site.cmd` 按 `port.txt`→`dashboard.cfg`→**拒绝并写日志**取值）④ 实活检查；`uninstall.cmd` 按用户口径**全删含 `data`**（要 `DELETE`、可先拷数据）；`creds.ps1` 按码点拼中文口令文件名 | 提权检查曾挡住只读的 `/status`（已提到闸门之前）；`ops-extras/start-api.cmd` 带着 34 个裸 LF 发布过（A-7 复发，现已做成出包硬校验：包内所有 `.cmd/.bat` 必须 CRLF + 零高位字节）；批处理六条语法定律（A-12）；自删脚本读不到后续行（A-13） |
 | 23 一键安装包完整实跑 | 从**仓库树外**解压真包跑全流程：环境（含把闸门抬到 `>=99` 逼出"太旧"与"无 winget"两条分支，rc 2/3）、部署（七目录 + 现编 exe + `/` 200 + `/api/menu` 200 + `口令.txt` 落站点根）、三条拒绝分支（源码仓库里部署 rc 1 / 包拷到自身 rc 6 / 无端口记录 rc 2 且不猜端口）、端口占用幂等（already serving rc 0）、卸载（`/quiet` rc 0 留档 · `DELETE` rc 0 全删自清 · 删前拷贝带标记文件实测存活）、验收（包内 `ops/verify-deploy.mjs` 只读 26 项与 `--mutate` 36 项全绿）、`creds` 三态 | 抓到两个真 bug：`creds.cmd /root` 对读不到的目录打印 `[ok] found` 且 rc 0（A-14：非终止错误 + 空值继续跑），开机任务被拒时把还能成的登录任务与起站一起放弃（A-15，已改降级）；**提权后 `schtasks /ru SYSTEM` 在 Windows 11 客户端仍被拒**，故 `ONSTART` 成功那条仍未验证（R-15） |
 | 24 发布形态收敛到 1.1.0 | 版本 1.0.0 → **1.1.0**（三处 `package.json` 同步），releases 只留**一键安装包 + 源码**两种形态（D-15），撤下 `nginx-html-webdist.zip` 与单摆的 `BianwangDashboard.exe`；旧 v1.0.0 的 **release 已删除**（三个资产一起撤下；`v1.0.0` 这个 git tag 保留，作为版本历史的锚点） | v1.0.0 那个包是发出去才知道坏的（A-11），留着等于摆一个已知装不上的产物；单摆 exe 又违背"不预置二进制"（A-6），两处都是同一类错误：**把可从源码现做的东西当成制品冻结** |
+| 25 一键安装包收成"一个 exe" | `installer/Installer.cs`（WinForms 四段：自检 / 安装 / 自启选择 / 维护）+ `build.cmd` 目标机现编 + `setup.cmd` 变引导器（现编 → `--ping` 重试 → 开界面，`/cli` 保留线性四步）；`autostart.cmd` 加 `/site:boot\|none` 与 `/dash:on\|off`，"登录后自动起"改走 HKCU Run（免管理员）；出包加**第五道硬闸：包内零 `.exe`** | 用户要求"完整的、带自检/安装/自启选择的 exe 程序"（D-16）。实跑抓到三条"会撒谎的检查"（A-17：更新被 `deploy.cmd` 判成自己拷自己 rc 6 · 祖先链把被测目录自己算进去 · 端口三态判反）和一条管道继承缺陷（A-16：`start /b` 起的站点扣住调用方 stdout，四种写法全测过都不行，改由安装器 ShellExecute 另起会话）；另外记下"刚编出的 exe 立刻执行会被实时扫描拒绝访问"这条机器差异 |
+| 26 全局访问协议（HTTP/HTTPS） | `dashboard/Dashboard.cs` 第一栏加「访问协议」两档 + 「TLS 由谁终结」+ 证书框 + 自签一键生成（系统自带 `New-SelfSignedCertificate`→pfx，非管理员可成）；协议写进 `dashboard.cfg` 的 `scheme`/`tls_from`/`tls_pfx`，被 `server/src/index.js`（`resolveTls()` → `https.createServer`）、`installer/run-site.cmd`（证书不在 → rc 4 拒绝起站）、`installer/Installer.cs`（自检第 11 项「访问协议」+ 探针按协议走）三层读取；新增 `nginx/bianwang-http.conf`（没证书时的 Nginx 装法，防护齐、故意不发 HSTS）；会话 cookie 的 `Secure` 改为按请求真实协议判 | 用户要求"全局"的协议可选，且明确"生产暂无证书、默认必须 HTTP"（R23 / D-17）。实跑四态各得其所（§4.12：https 下整站 200、按 http 访问被拒、自签被真实信任链拒 → 界面上那句告警是实测）。抓到三条新问题：`.NET 4.x` 探针不开 TLS 1.2 会把活站判成"无应答"（A-19）、node 子进程 UTF-8 日志被按 OEM 码页解成繁体乱码（A-20，同一族乱码的第 5 个根因）、`NODE_ENV=production` 硬加 `Secure` 会把"生产 + 无证书 + HTTP"打成登录静默失败（R-16）。全量自检复跑：接口 48 项、隔离实例 219 项（含新加的两条 Secure 判据）全绿。未验：证书路径含中文时 `run-site.cmd` 读不到（界面已警告） |
+| 27 含安装器 exe 的包形态 | `make-nginx-package.mjs --with-exe` → `bianwang-<版本>-installer-win.zip`（默认包全部内容 + 本次现编的 `installer\BianwangInstaller.exe` + `EXE-SHA256.txt`，仪表盘仍目标机现编）；`Installer.cs` 的「部署包完整性」分辨三态并重算摘要比对（不一致判失败）；`Site` 记 `target.txt` | 用户要求"包里含 installer exe 与要部署的源码"（R24 / D-18，与 D-15 的张力用"强制现编 + 可核对摘要"化解）。实跑抓到两条：`.exe` 被运行态过滤规则从 `SHA256SUMS.txt` 里抹掉，唯一制品恰好验不到（A-21）；`--install --target` 之后 `--autostart` 不带 target 会指向默认目录，装在 A 自启在 B（A-22）。九步端到端全绿（§4.13）。**同日 11:0x 复验最终包时另抓到一条**：解压在 `%TEMP%` 里的那份 exe 一执行就消失（360 主动防御处置，仓库树内同摘要的那份正常）——A-24 / R-17，文档因此把"解压到常规目录"写进入口说明，并把零 exe 形态继续作为默认交付 |
+| 28 交付 zip 的跨平台可解性 | 新增 `scripts/make-zip.ps1`（.NET `ZipArchive` 逐条建条目、`\`→`/`、压完读回中央目录做两条硬判：`\` 条数与**非 ASCII** 条数都必须为 0）；`make-nginx-package.mjs` 不再调 `Compress-Archive`；三本自产演示册的**文件名**改 ASCII（`bianwang-demo-*`），**标题**保持中文；`SHA256SUMS.txt` 的 `api/node_modules` 聚合值改成 `# 注释行`，比对算法挪进 `MANIFEST.md` | 复验含 exe 的包时顺手量的：`Compress-Archive` 的 2463 条条目全用 `\`，Linux `unzip` 会解成一堆带反斜杠的平面文件，而 DEPLOY §二 的 Linux 路线就写着"用这个包"；非 ASCII 条目名按 cp936 写且不置 UTF-8 flag（.NET Framework 无 `entryNameEncoding` 重载可掰），Explorer 正常而 `unzip` 乱码，受影响的正是镜像站**按文件名找实体**的三本演示册（A-25）。聚合行格式合法却指向不存在的"文件"，害 `sha256sum -c` 整包退出码 1（A-26）。回环验证：`unzip` 解包 → 2449 个文件齐、`sha256sum -c SHA256SUMS.txt` 123 条全 OK；api-smoke 48/48 与 full-sweep 219/219 改名后复跑不变 |
+| 29 离线完整安装包（Electron 运行时 + 安装器，NSIS 单 exe） | 用户指定形态（D-19）。新增 `installer\runtime.cmd`（运行时统一判定：随包的 `runtime\BianwangRuntime.exe` + `ELECTRON_RUN_AS_NODE` 赢，否则 PATH 上的 `node`，低于 20.19.0 拒绝）并接进 `env/deploy/run-site/creds/uninstall/setup` 六个引擎；`deploy.cmd` 认 `/inplace`（就地安装只核对 + 播种 + 现编仪表盘，不再 robocopy 400 MB）并把 `runtime` 纳入拷贝清单；`installer-app/`（Electron 主进程 + Yan archival 四段界面，只做呈现与决策，动手仍是那七个 `.cmd`）；`dashboard/Dashboard.cs` 的四处 `node.exe` 收成一个 `NodeStartInfo()`，随包运行时也能被体检与启动；新增 `installer\offline.nsi` 与 `scripts\make-offline-package.mjs`（外部二进制按 sha256 取用、`.exe` 白名单、依赖清单三处同源、编完回查产物）。WinForms 安装器（`Installer.cs` + `build.cmd`）退役，交付只剩离线包 + 源码 | 本机实跑：站点那半六道闸全过（2448 文件、孤立自足性 `/api/menu` 200、CRLF+ASCII、软链接 0）；离线树内用**随包运行时**跑通 自检十项 → 就地安装（`deploy /inplace`）→ 起站 → `/api/menu` 200，`installer-app` 的引擎调用与 UTF-8 逐行回显按 A-28 修正后可用；`installer-app` 界面经 CDP 真点（10 项自检绘制、四段切换、`实访核验` 按钮 rc=0、页面异常事件 0、截图留证）；`BianwangRuntime.exe -v` = v24.21.0，依赖探针 11 项真 import 成功；产物 `bianwang-1.1.0-offline-win.exe` **179,366,878 字节（171.1 MB）**，sha256 `84acedf83d5496c7b0408961a62df93ad75de1f1fef269227b9a06c0e0b1b266`（**这是本轮第一件**，包内说明与引擎注释随后又被修正，最终交付见第 30 阶段——摘要跨轮没有可比性，A-23）。⚠️ 未验：真机双击过 UAC/SmartScreen 的完整安装体验、Win10 与 Server 2019 实机、`ONSTART`+`SYSTEM`（R-19 / R-15） |
+| 30 离线包收口：退役形态的口径清干净 | 删掉 `make-nginx-package.mjs` 的 `--with-exe` 支路（第五道闸收成"站点树零 `.exe`"）；`make-offline-package.mjs` 加 `rewriteDocs()`（改掉包内 `README-FIRST.md` 那句"用 csc 现编安装器"的假说明，给 `MANIFEST.md` 补 `runtime/` 行并写明两半各由哪个摘要自证；找不到那段旧文本就拒绝出包，A-31）；`installer\autostart.cmd` 四处注释与提示改指 `runtime\BianwangRuntime.exe`；README §一·七·九 / USAGE §10 / DEPLOY §一B·六 里"双击 `BianwangInstaller.exe`"、"`--selfcheck` / `--live` / `--autostart`"、"九步实跑"全部换成当前形态，历史数字退回 DEVELOPMENT 并标"上一轮"；§4.11.1 · §4.13 · D-16 · D-18 · R-17 逐处加"已被 D-19 取代"；新增 §4.14.1 | 三套自检**串行复跑** 48/48 · 219/219 · 165/165（控制台零输出）；对**离线树**用随包运行时起后端跑 `verify-deploy`：只读 26 项 0 失败、`--mutate` 含写 36 项 0 失败；依赖守卫与 `pnpm audit:ui` 同轮 PASS；九个 `.cmd/.bat` 重新量过 CRLF 与高位字节。最终产物 **171.1 MB 量级**（摘要只看当轮 `SHA256SUMS-offline.txt`，理由见 A-32）。⚠️ 仍未验：真机 UAC+SmartScreen 首次安装、Win10 / Server 2019 实机、`ONSTART`+`SYSTEM` |
+| 31 项目目录去冗余（用户指示） | 删掉退役形态的产物：`bianwang-1.0.0-nginx{,.zip}`（就是装不上的那版）、`bianwang-1.1.0-installer-win{,.zip}`、`outputs/nginx-html-webdist.zip`、仓库根散落的 `bianwang-1.1.0-nginx.zip`；连同轮的取证目录 `.scratch-*`（14 个，含 61 张文档按名引用的截图——选项给过"只留截图"，你选了"全删"）、`outputs/*.log`（31 份）与出包缓存 `outputs/package/.api-deploy`。**保留**：根目录 `口令.txt`（你不删）、当前这轮的站点树与离线 exe、`outputs/backup-2026-09-29-examples/` | 53 条点名路径、**1.63 GB**；逐条打印体量，删前记文件数（2444 / 2451 / 2388…）删后核对；内容目录计数无变化（`web/src` 51 · `server/src` 28 · `server/data` 31 · `installer` 14 · `installer-app` 9 · `nginx` 3 · `ops-extras` 7 · `scripts` 10），未跟踪清单只剩该提交的源码与新脚本。截图与 registry 原始件的锚点已就地改成"本机取证已清理，事实以本文为准"（§3.4 把可复核性挪到 `pin-guard` 上），不留假指向；删完**重出一次包**让"包内文本＝仓库文本"成立（§4.14 末两行） |
+| 32 全自动验证清单跑出的三处缺陷 | ① **E-10**：`securityHeaders()` 里 HSTS 与 CSP `upgrade-insecure-requests` 只按 `NODE_ENV=production` 发 → 明文 HTTP 的生产档被浏览器把每个请求改写成 https、整站白屏；改成与会话 cookie `Secure` 同一条判据（`req.secure`，Nginx 已传 `X-Forwarded-Proto $scheme`），并与 `nginx/bianwang-http.conf` 那句"HTTP 版故意不发 HSTS"对齐。② **F-19**：走查脚本悄悄读一个手工摆在 `.scratch-verify/` 里的 PNG 夹具，上一轮清理把它删了 → 三项上传断言判红；现在 `writePngFixture()` 每轮现场生成（163 字节，满足 `sniffImageType()` 的魔数与 `maxImageBytes`），路径与体量进断言 detail。③ **A-33**：`SHA256SUMS-offline.txt` 用 CRLF 写，`sha256sum -c`（包内 `MANIFEST.md` 教的核对命令）把 `\r` 当文件名 → `FAILED open or read`、退出码 1；改 LF 并写完立刻读回断言格式 | 浏览器实测取的是**内网 IP**而非回环（回环属"可信来源"，Chrome 不对它执行升级，这正是该缺陷能活到现在的原因）：修前 7 请求 / **6 条被改写成 https** / 6 个 `ERR_SSL_PROTOCOL_ERROR` / `/api/` 一条未发、页面空白；修后 **16 请求 / 0 改写 / 0 失败 / 5 条 `/api/`**、标题渲染成"卷首 · 档案瀑布"；带 `x-forwarded-proto: https` 时两档头都回来（curl 逐头核对）。自检由 219 → **221**（F-20 那对成对断言，同时把原来那条"生产模式带 HSTS"的错误判据拆掉）；三套串行复跑 **48/48 · 221/221 · 165/165**；出包（站点半六道闸 + 离线三道闸 + NSIS）后**对交付树本身**用随包运行时绑 `192.168.10.11:8792` 复测：浏览器 16 请求 / 0 改写 / 0 失败、`verify-deploy` 只读 26 与含写 36 各 0 失败、包内文本与仓库文本逐字节 33 件差异 0（§4.14 与 README §九同一行）；文档四处口径同步（README 防嗅探与 `NODE_ENV` 行、DEPLOY §四 两份 Nginx、DEVELOPMENT §4.1 表与 R-16）。⚠️ 仍未验：真机 UAC+SmartScreen 首次安装、Win10 / Server 2019 实机、`ONSTART`+`SYSTEM`（R-15 / R-19），以及**经真 Nginx 终结 TLS 后**这两档头的端到端表现（本轮只到"转发头判据"这一层） |
 
 ---
 
@@ -1046,6 +1477,10 @@ node scripts/make-nginx-package.mjs --write --zip   # 出包：api/ 现做、包
 7. **规模上限**：档案上千本后单文件读写与索引重建变慢（R-8），届时按 README §三 的判据换库，而不是"重建索引"当性能手段。
 8. **开机自启的 `ONSTART` 成功路径要在目标机上补验**（R-15）：本机已提权跑到注册这一步，但
    Windows 11 客户端的 `schtasks /ru SYSTEM` 被策略拒绝（A-15），所以"任务建成 → 重启 → 登录前站点可达"这条链**仍未正面验证**。
-   要在**真正的 Windows 10** 与 **Server 2019** 上各跑一次 `installer\setup.cmd` → 重启 → 确认登录前
-   `http://127.0.0.1:<端口>/api/menu` 就返回 200，并确认 `node` 在 `SYSTEM` 的 PATH 里（按机器范围装，别装个人目录）；
-   Server 2019 还要额外走一遍"没有 winget"那条退回指引。客户端机若也被拒，改用"登录即起"或服务包装器（后者先核许可）。
+   要在**真正的 Windows 10** 与 **Server 2019** 上各跑一次：双击离线包 → 界面第 3 段选**"开机即起，无人登录也可访问"**（或纯命令行 `installer\setup.cmd /cli`，它默认就是这一档）→ 重启 → 确认登录前
+   `http://127.0.0.1:<端口>/api/menu` 就返回 200。**离线包顺带解掉了一条旧前提**：`SYSTEM` 的 PATH 里有没有 Node 从此不重要了（`run-site.cmd` 先解析 `runtime\BianwangRuntime.exe`），
+   只有你删掉 `runtime\` 换系统 Node 时才要按机器范围装。Server 2019 还要额外走一遍"没有 winget"那条退回指引（那一档只在没有随包运行时的树上才走得到）。
+   客户端机若也被拒，选"登录后自动起"（写 HKCU Run，免管理员，界面会替你把 rc 4 降级成这一档）或服务包装器（后者先核许可）。
+9. ~~**三套自检要在离线包这一轮复跑**~~（**每轮收尾都要串行复跑，不看"改了哪一侧"**：本轮改到 `server/src/security/middleware.js` 与走查脚本，接口 48/48 → 全量 **221/221**（新增 E-10 那对成对断言）→ 走查 165/165、控制台零输出；另对离线树补跑 `verify-deploy` 26 只读 + 36 含写，见 §4.14）。
+   留这条划线记录是因为它暴露了一个口径问题：改 `installer/` 与 `dashboard/` 时 `server/`+`web/src/` 一行没动，
+   很容易就"沿用上一轮数字"——**沿用不等于验过**，收尾时要么复跑，要么在文档里明写"本轮未复跑"。

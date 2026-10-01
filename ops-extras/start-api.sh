@@ -18,6 +18,9 @@ if [ -z "${BW_SECRET:-}" ] && [ ! -f "$BW_DATA_DIR/.secret" ]; then
 fi
 
 command -v node >/dev/null || { echo "[X] 未安装 Node.js（需要 >=20.19.0）"; exit 1; }
-echo "[*] Node $(node --version) · http://$BW_HOST:$BW_PORT · 数据 $BW_DATA_DIR"
+# 协议跟着证书走：给了 BW_TLS_PFX（或 BW_TLS_KEY/BW_TLS_CERT 成对）就以 TLS 监听，否则明文 HTTP（默认）。
+BW_SCHEME=http
+[ -n "${BW_TLS_PFX:-}${BW_TLS_KEY:-}" ] && BW_SCHEME=https
+echo "[*] Node $(node --version) · $BW_SCHEME://$BW_HOST:$BW_PORT · 数据 $BW_DATA_DIR"
 cd "$API"
 exec node src/index.js

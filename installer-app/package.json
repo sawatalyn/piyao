@@ -1,0 +1,9 @@
+{
+  "name": "bianwang-setup",
+  "productName": "辨妄阁一键安装",
+  "version": "1.1.0",
+  "description": "辨妄阁离线安装包的图形安装器（自检 / 安装 / 自启选择 / 维护）。安装逻辑本身仍只有 installer\\*.cmd 那一份。",
+  "main": "main.cjs",
+  "author": "辨妄阁",
+  "license": "GPL-2.0-or-later"
+}
